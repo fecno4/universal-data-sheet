@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Universal DataSheet Studio — Gerador Multimarcas de Peças Pesadas</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📑</text></svg>">
+</head>
+<body>
+  <div class="app-wrapper">
+    <!-- Barra Superior de Navegação -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-badge">PRO</div>
+        <div class="header-titles">
+          <h1>Universal DataSheet Studio</h1>
+          <p>Gerador Técnico de DataSheets A4 Multimarcas com IA Local</p>
+        </div>
+      </div>
+      <div class="header-meta">
+        <span class="status-indicator online"></span>
+        <span class="status-text" id="server-status">Conectando...</span>
+      </div>
+    </header>
+
+    <!-- Conteúdo Principal -->
+    <main class="app-main">
+      <!-- Painel de Configuração e Entrada -->
+      <section class="form-section card">
+        <div class="card-header">
+          <h2>Especificação e Pesquisa da Peça</h2>
+          <span class="badge-tag">Multimarcas</span>
+        </div>
+
+        <form id="datasheet-form" class="form-grid">
+          <!-- 1. Identificação Básica -->
+          <div class="form-row three-cols">
+            <div class="input-group">
+              <label for="brand-select">Marca / Montadora *</label>
+              <div class="select-with-custom">
+                <select id="brand-select">
+                  <option value="Volvo">Volvo</option>
+                  <option value="Mercedes-Benz">Mercedes-Benz</option>
+                  <option value="Scania">Scania</option>
+                  <option value="DAF">DAF</option>
+                  <option value="MAN">MAN</option>
+                  <option value="Iveco">Iveco</option>
+                  <option value="Volkswagen">Volkswagen / MAN Latin</option>
+                  <option value="Cummins">Cummins</option>
+                  <option value="Caterpillar">Caterpillar</option>
+                  <option value="Bosch">Bosch</option>
+                  <option value="Knorr-Bremse">Knorr-Bremse</option>
+                  <option value="Wabco">Wabco</option>
+                  <option value="ZF">ZF Friedrichshafen</option>
+                  <option value="Eaton">Eaton</option>
+                  <option value="__custom__">Outra marca (Digitar)...</option>
+                </select>
+                <input type="text" id="brand-custom-input" placeholder="Digite a marca..." hidden>
+              </div>
+            </div>
+
+            <div class="input-group">
+              <label for="part-number-input">Part Number OEM *</label>
+              <input type="text" id="part-number-input" placeholder="Ex.: 21500000 ou A 000 000 00 00" required>
+            </div>
+
+            <div class="input-group">
+              <label for="component-title-input">Nome / Título do Componente</label>
+              <input type="text" id="component-title-input" placeholder="Ex.: Válvula Reguladora de Pressão APU">
+            </div>
+          </div>
+
+          <!-- 2. Categoria e Aplicação -->
+          <div class="form-row three-cols">
+            <div class="input-group">
+              <label for="category-input">Sistema / Categoria</label>
+              <input type="text" id="category-input" placeholder="Ex.: Sistema Pneumático de Freios ou Injeção">
+            </div>
+
+            <div class="input-group">
+              <label for="catalog-ref-input">Referência / Catálogo / Seção</label>
+              <input type="text" id="catalog-ref-input" placeholder="Ex.: Catálogo Volvo Impact / Grupo 561">
+            </div>
+
+            <div class="input-group">
+              <label for="quantity-input">Quantidade por Veículo</label>
+              <input type="number" id="quantity-input" value="1" min="1">
+            </div>
+          </div>
+
+          <!-- 3. Modelos Conhecidos -->
+          <div class="form-row">
+            <div class="input-group full-width">
+              <label for="application-input">Modelos / Aplicação Conhecida</label>
+              <input type="text" id="application-input" placeholder="Ex.: Volvo FH 460 / FH 540 D13C; Mercedes Actros 2546 OM471; Ônibus B11R">
+            </div>
+          </div>
+
+          <!-- 4. Campo de Pesquisa Externa (Internet / Fabricante) -->
+          <div class="form-row">
+            <div class="input-group full-width">
+              <div class="label-with-hint">
+                <label for="external-research-input">Informações de Pesquisa Externa (Internet, Fornecedores, Manuais)</label>
+                <span class="hint">Cole livremente textos, tabelas de medidas, códigos cruzados ou especificações</span>
+              </div>
+              <textarea id="external-research-input" rows="4" placeholder="Cole aqui o texto da sua pesquisa na web. Exemplo:
+Fabricante original Knorr-Bremse K012345. Tensão nominal 24V. Pressão máxima de trabalho 12.5 bar. Conexões pneumáticas rosca M22x1.5. Conector elétrico tipo baioneta 4 pinos. Peso aproximado 4.2 kg. Carcaça em alumínio fundido com tratamento anticorrosivo. Utilizado em caminhões Volvo FH Euro 5 e Euro 6."></textarea>
+            </div>
+          </div>
+
+          <!-- 5. Uploads de Imagens (Página 1 e Página 3) -->
+          <div class="form-row two-cols">
+            <!-- Imagem 1: Foto física da peça (Página 1) -->
+            <div class="input-group upload-card">
+              <label>📷 Foto Real da Peça (Página 1)</label>
+              <p class="upload-subtext">Fotografia da peça física, etiqueta original ou embalagem</p>
+              <div class="upload-dropzone" id="p1-dropzone">
+                <input type="file" id="p1-file-input" accept="image/*" hidden>
+                <button type="button" class="upload-btn" id="p1-select-btn">📁 Selecionar Foto da Peça</button>
+                <div class="preview-box" id="p1-preview-box" hidden>
+                  <img id="p1-thumb-img" alt="Foto da peça">
+                  <div class="thumb-meta">
+                    <span id="p1-file-info">arquivo.png</span>
+                    <button type="button" class="btn-remove-thumb" id="p1-remove-btn">✖ Remover</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Imagem 2: Diagrama / Desenho Técnico (Página 3) -->
+            <div class="input-group upload-card">
+              <label>📐 Diagrama / Desenho Técnico (Página 3)</label>
+              <p class="upload-subtext">Vista explodida, corte técnico ou esquema de montagem</p>
+              <div class="upload-dropzone" id="p3-dropzone">
+                <input type="file" id="p3-file-input" accept="image/*" hidden>
+                <button type="button" class="upload-btn" id="p3-select-btn">📁 Selecionar Diagrama Técnico</button>
+                <div class="preview-box" id="p3-preview-box" hidden>
+                  <img id="p3-thumb-img" alt="Diagrama técnico">
+                  <div class="thumb-meta">
+                    <span id="p3-file-info">diagrama.png</span>
+                    <button type="button" class="btn-remove-thumb" id="p3-remove-btn">✖ Remover</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 6. Notas de Cotação da Empresa e Fontes -->
+          <div class="form-row two-cols">
+            <div class="input-group">
+              <label for="company-notes-input">Requisitos & Observações da Empresa</label>
+              <textarea id="company-notes-input" rows="2" placeholder="Ex.: Cotar exclusivamente o part number indicado. Exigir foto da etiqueta antes do embarque."></textarea>
+            </div>
+
+            <div class="input-group">
+              <label for="sources-input">Links & Fontes Consultadas (1 por linha)</label>
+              <textarea id="sources-input" rows="2" placeholder="Ex.: https://loja.exemplo.com/valvula-volvo-21500000&#10;Catálogo oficial do fabricante"></textarea>
+            </div>
+          </div>
+
+          <!-- 7. Seletor de IA e Botão de Ação -->
+          <div class="form-row actions-bar">
+            <div class="ai-model-selector">
+              <label for="ai-model-select">Motor de IA Local (Ollama 10.88.30.12):</label>
+              <select id="ai-model-select">
+                <option value="gemma4:26b">gemma4:26b (26B parâmetros · Alta Precisão)</option>
+                <option value="qwen2.5-coder:14b">qwen2.5-coder:14b (14.7B parâmetros)</option>
+              </select>
+            </div>
+
+            <div class="action-submit">
+              <button type="submit" id="generate-btn" class="primary-btn">
+                <span class="btn-icon">⚡</span>
+                <span class="btn-text">Gerar DataSheet Oficial com IA</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="generation-status" class="generation-status" hidden>
+            <div class="spinner"></div>
+            <span id="status-message">Processando informações e sintetizando engenharia com a IA local...</span>
+          </div>
+        </form>
+      </section>
+
+      <!-- Barra de Controle do Documento Gerado -->
+      <section id="doc-actions-section" class="doc-actions-bar" hidden>
+        <div class="actions-left">
+          <div class="lang-tabs-wrapper">
+            <button type="button" id="tab-pt-btn" class="lang-tab-btn active">🇧🇷 Português (pt-BR)</button>
+            <button type="button" id="tab-en-btn" class="lang-tab-btn">🇺🇸 English (en-US)</button>
+          </div>
+          <span class="doc-ready-tag" id="doc-ready-status">✔ 2 Versões (pt-BR e en-US) prontas</span>
+        </div>
+        <div class="actions-right">
+          <button type="button" id="toggle-edit-btn" class="secondary-btn">✏️ Ativar Edição</button>
+          <button type="button" id="restore-original-btn" class="secondary-btn">↺ Restaurar IA</button>
+          <button type="button" id="print-pt-btn" class="print-btn print-pt-btn" title="Imprimir versão em Português">🖨️ Salvar PDF (pt-BR)</button>
+          <button type="button" id="print-en-btn" class="print-btn print-en-btn" title="Imprimir versão em Inglês">🖨️ Salvar PDF (en-US)</button>
+        </div>
+      </section>
+
+      <!-- Containers de Prévia das 3 Páginas A4 por Idioma -->
+      <section id="preview-pt-container" class="preview-container lang-container active-lang" hidden>
+        <!-- As 3 páginas A4 em Português serão renderizadas aqui -->
+      </section>
+
+      <section id="preview-en-container" class="preview-container lang-container" hidden>
+        <!-- As 3 páginas A4 em Inglês serão renderizadas aqui -->
+      </section>
+    </main>
+  </div>
+
+  <script src="datasheet-render.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
