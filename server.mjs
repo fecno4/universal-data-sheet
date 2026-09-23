@@ -28,8 +28,10 @@ const MIME_TYPES = {
 
 const OLLAMA_ENDPOINTS = [
   process.env.OLLAMA_URL,
-  'http://10.88.30.12:11434',
-  'http://127.0.0.1:11434'
+  'http://127.0.0.1:11434', // Túnel local para 10.88.30.12
+  'http://127.0.0.1:11435', // Túnel local para 10.88.30.11
+  'http://10.88.30.12:11434', // Direto (LXC / Rede interna)
+  'http://10.88.30.11:11434'  // Direto (LXC / Rede interna)
 ].filter(Boolean);
 
 async function callOllama(prompt, model = DEFAULT_MODEL) {
@@ -515,7 +517,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Servir arquivos estáticos do diretório public
-  if (req.method === 'GET') {
+  if (req.method === 'GET' || req.method === 'HEAD') {
     let safePath = pathname;
     if (safePath === '/' || safePath === '') safePath = '/index.html';
     const filePath = path.join(PUBLIC_DIR, safePath);
@@ -541,6 +543,10 @@ const server = http.createServer(async (req, res) => {
         'Content-Type': contentType,
         'Cache-Control': 'no-cache'
       });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
       fs.createReadStream(filePath).pipe(res);
     });
     return;

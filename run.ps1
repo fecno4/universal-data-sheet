@@ -20,16 +20,17 @@ try {
     Exit 1
 }
 
-# Inicia o túnel SSH para o Ollama se necessário (Windows para 10.88.30.12)
+# Inicia o túnel SSH para o Ollama se necessário (Windows para 10.88.30.12 e 10.88.30.11)
 $TunnelProcess = $null
 $SshKey = "$env:USERPROFILE\.ssh\multi-migration-ed25519"
 if (Test-Path $SshKey) {
     try {
-        $TcpTest = Test-NetConnection -ComputerName 127.0.0.1 -Port 11434 -WarningAction SilentlyContinue
-        if (-not $TcpTest.TcpTestSucceeded) {
-            Write-Host "Iniciando túnel seguro para o servidor de IA (10.88.30.12)..." -ForegroundColor Yellow
-            $TunnelProcess = Start-Process ssh -ArgumentList "-i", "`"$SshKey`"", "-o", "StrictHostKeyChecking=no", "-N", "-L", "11434:10.88.30.12:11434", "root@10.88.30.60" -PassThru -WindowStyle Hidden
-            Start-Sleep -Seconds 1
+        $TcpTest12 = Test-NetConnection -ComputerName 127.0.0.1 -Port 11434 -WarningAction SilentlyContinue
+        $TcpTest11 = Test-NetConnection -ComputerName 127.0.0.1 -Port 11435 -WarningAction SilentlyContinue
+        if (-not $TcpTest12.TcpTestSucceeded -or -not $TcpTest11.TcpTestSucceeded) {
+            Write-Host "Iniciando túnel seguro para os servidores de IA (10.88.30.12 e 10.88.30.11)..." -ForegroundColor Yellow
+            $TunnelProcess = Start-Process ssh -ArgumentList "-i", "`"$SshKey`"", "-o", "StrictHostKeyChecking=no", "-N", "-L", "11434:10.88.30.12:11434", "-L", "11435:10.88.30.11:11434", "root@10.88.30.60" -PassThru -WindowStyle Hidden
+            Start-Sleep -Seconds 2
         }
     } catch {
         Write-Host "Aviso: Não foi possível testar ou iniciar o túnel automático." -ForegroundColor DarkGray
