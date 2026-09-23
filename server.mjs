@@ -26,18 +26,37 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon'
 };
 
-const OLLAMA_ENDPOINTS = [
-  process.env.OLLAMA_URL,
+// Servidor 10.88.30.12: Dedicado ao Gemma (26B / Alta precisão)
+const SERVER_12_ENDPOINTS = [
   'http://127.0.0.1:11434', // Túnel local para 10.88.30.12
+  'http://10.88.30.12:11434' // Direto em ambiente de rede Proxmox/LXC
+];
+
+// Servidor 10.88.30.11: Dedicado ao Granite (7B MoE 1B ativo / Ultrarrápido)
+const SERVER_11_ENDPOINTS = [
   'http://127.0.0.1:11435', // Túnel local para 10.88.30.11
-  'http://10.88.30.12:11434', // Direto (LXC / Rede interna)
-  'http://10.88.30.11:11434'  // Direto (LXC / Rede interna)
-].filter(Boolean);
+  'http://10.88.30.11:11434' // Direto em ambiente de rede Proxmox/LXC
+];
+
+function getEndpointsForModel(modelName) {
+  if (process.env.OLLAMA_URL) {
+    return [process.env.OLLAMA_URL];
+  }
+  const name = String(modelName || '').toLowerCase();
+  if (name.includes('granite')) {
+    return SERVER_11_ENDPOINTS;
+  }
+  if (name.includes('gemma')) {
+    return SERVER_12_ENDPOINTS;
+  }
+  return [...SERVER_12_ENDPOINTS, ...SERVER_11_ENDPOINTS];
+}
 
 async function callOllama(prompt, model = DEFAULT_MODEL) {
   const payload = {
     model: model || DEFAULT_MODEL,
     think: false,
+    keep_alive: '15m',
     messages: [
       {
         role: 'system',
@@ -64,7 +83,8 @@ async function callOllama(prompt, model = DEFAULT_MODEL) {
     }
   };
 
-  for (const endpoint of OLLAMA_ENDPOINTS) {
+  const endpoints = getEndpointsForModel(model);
+  for (const endpoint of endpoints) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 200000);
 
