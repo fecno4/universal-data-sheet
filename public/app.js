@@ -18,9 +18,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const sourcesInput = document.getElementById('sources-input');
   const aiModelSelect = document.getElementById('ai-model-select');
   const generateBtn = document.getElementById('generate-btn');
+  const forceGenerateBtn = document.getElementById('force-generate-btn');
   const generationStatus = document.getElementById('generation-status');
   const statusMessage = document.getElementById('status-message');
   const serverStatus = document.getElementById('server-status');
+  const acervoSearchInput = document.getElementById('acervo-search-input');
+  const acervoSearchBtn = document.getElementById('acervo-search-btn');
+  const acervoClearBtn = document.getElementById('acervo-clear-btn');
+  const acervoResultsContainer = document.getElementById('acervo-results-container');
+  const pnLookupStatus = document.getElementById('pn-lookup-status');
 
   // Upload Imagem 1 (Pág. 1)
   const p1FileInput = document.getElementById('p1-file-input');
@@ -244,10 +250,218 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 6. Envio do Formulário e Geração dos DataSheets Bilíngues
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  // =========================================================================
+  // 6. ACERVO DE DATASHEETS (POSTGRESQL 10.88.30.60)
+  // =========================================================================
+  async function searchAcervo(queryStr) {
+    acervoClearBtn.hidden = !queryStr;
+    acervoResultsContainer.hidden = false;
+    acervoResultsContainer.className = 'acervo-results loading';
+    acervoResultsContainer.textContent = 'Pesquisando no banco de dados de DataSheets...';
 
+    try {
+      const qParam = queryStr ? `?q=${encodeURIComponent(queryStr)}&limit=20` : '?limit=20';
+      const resp = await fetch(`/api/datasheets/search${qParam}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const res = await resp.json();
+
+      acervoResultsContainer.className = 'acervo-results';
+      acervoResultsContainer.innerHTML = '';
+
+      const items = res?.items || [];
+      if (items.length === 0) {
+        acervoResultsContainer.textContent = queryStr
+          ? `Nenhum DataSheet encontrado no acervo para "${queryStr}". Você pode gerar um novo preenchendo os dados abaixo!`
+          : 'Nenhum DataSheet salvo no acervo até o momento.';
+        return;
+      }
+
+      const listHeader = document.createElement('div');
+      listHeader.style.cssText = 'padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border-color); font-size: 12px; color: var(--text-muted);';
+      listHeader.textContent = `Encontrados: ${res.total || items.length} DataSheet(s) arquivado(s)`;
+      acervoResultsContainer.appendChild(listHeader);
+
+      const itemsGrid = document.createElement('div');
+      itemsGrid.className = 'acervo-items-grid';
+
+      for (const it of items) {
+        const itemCard = document.createElement('div');
+        itemCard.className = 'acervo-item-card';
+
+        const cardTop = document.createElement('div');
+        cardTop.className = 'acervo-card-top';
+        const brandBadge = document.createElement('span');
+        brandBadge.className = 'acervo-brand-badge';
+        brandBadge.textContent = it.brand || 'OEM';
+        const pnSpan = document.createElement('strong');
+        pnSpan.className = 'acervo-pn-badge';
+        pnSpan.textContent = `PN ${it.part_number}`;
+        cardTop.append(brandBadge, pnSpan);
+
+        const cardTitle = document.createElement('div');
+        cardTitle.className = 'acervo-item-title';
+        cardTitle.textContent = it.title || 'Componente Veicular';
+
+        const cardMeta = document.createElement('div');
+        cardMeta.className = 'acervo-card-meta';
+        if (it.model_compat) {
+          const mSpan = document.createElement('span');
+          mSpan.textContent = `Modelo: ${it.model_compat}`;
+          cardMeta.appendChild(mSpan);
+        }
+        if (it.category) {
+          const cSpan = document.createElement('span');
+          cSpan.textContent = `Sistema: ${it.category}`;
+          cardMeta.appendChild(cSpan);
+        }
+        if (it.updated_at) {
+          const dt = new Date(it.updated_at);
+          const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('pt-BR') : '';
+          if (dateStr) {
+            const dSpan = document.createElement('span');
+            dSpan.textContent = `Atualizado em: ${dateStr}`;
+            cardMeta.appendChild(dSpan);
+          }
+        }
+
+        const openBtn = document.createElement('button');
+        openBtn.type = 'button';
+        openBtn.className = 'acervo-open-btn';
+        openBtn.textContent = '⚡ Abrir Instantâneo';
+        openBtn.onclick = () => loadSavedDatasheet(it);
+
+        itemCard.append(cardTop, cardTitle, cardMeta, openBtn);
+        itemsGrid.appendChild(itemCard);
+      }
+      acervoResultsContainer.appendChild(itemsGrid);
+    } catch (err) {
+      acervoResultsContainer.className = 'acervo-results error';
+      acervoResultsContainer.textContent = `Erro ao consultar acervo: ${err.message}`;
+    }
+  }
+
+  function clearAcervoSearch() {
+    acervoSearchInput.value = '';
+    acervoClearBtn.hidden = true;
+    acervoResultsContainer.hidden = true;
+    acervoResultsContainer.innerHTML = '';
+  }
+
+  async function loadSavedDatasheet(item) {
+    try {
+      acervoResultsContainer.className = 'acervo-results loading';
+      acervoResultsContainer.textContent = `Carregando DataSheet ${item.brand || 'OEM'} PN ${item.part_number} do banco de dados...`;
+
+      const resp = await fetch(`/api/datasheets/${item.id}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+
+      if (!data || !data.content_pt) throw new Error('Dados do DataSheet não retornados pelo servidor');
+
+      currentBilingualDoc = {
+        pt_BR: data.content_pt,
+        en_US: data.content_en || data.content_pt
+      };
+      originalBilingualDoc = JSON.parse(JSON.stringify(currentBilingualDoc));
+
+      // Preenche os campos do formulário para referência
+      if (item.brand) {
+        const matchingOpt = Array.from(brandSelect.options).find(o => o.value.toLowerCase() === item.brand.toLowerCase());
+        if (matchingOpt) {
+          brandSelect.value = matchingOpt.value;
+          brandCustomInput.hidden = true;
+        } else {
+          brandSelect.value = '__custom__';
+          brandCustomInput.hidden = false;
+          brandCustomInput.value = item.brand;
+        }
+      }
+      partNumberInput.value = data.part_number || '';
+      if (data.title) componentTitleInput.value = data.title;
+      if (data.category) categoryInput.value = data.category;
+      if (data.model_compat) applicationInput.value = data.model_compat;
+      if (data.custom_notes) companyNotesInput.value = data.custom_notes;
+
+      // Renderiza as páginas
+      window.DatasheetRender.render(currentBilingualDoc.pt_BR, previewPtContainer);
+      window.DatasheetRender.render(currentBilingualDoc.en_US, previewEnContainer);
+
+      docActionsSection.hidden = false;
+      switchLanguage('pt_BR');
+
+      docReadyStatus.textContent = `⚡ Recuperado do Acervo (${item.brand || 'OEM'} PN ${item.part_number})`;
+      forceGenerateBtn.hidden = false;
+      acervoResultsContainer.hidden = true;
+
+      previewPtContainer.scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+      acervoResultsContainer.className = 'acervo-results error';
+      acervoResultsContainer.textContent = `Erro ao carregar DataSheet: ${err.message}`;
+    }
+  }
+
+  let acervoDebounceTimer = null;
+  acervoSearchBtn.addEventListener('click', () => {
+    clearTimeout(acervoDebounceTimer);
+    searchAcervo(acervoSearchInput.value.trim());
+  });
+  acervoClearBtn.addEventListener('click', clearAcervoSearch);
+  acervoSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      clearTimeout(acervoDebounceTimer);
+      searchAcervo(acervoSearchInput.value.trim());
+    }
+  });
+  acervoSearchInput.addEventListener('input', () => {
+    clearTimeout(acervoDebounceTimer);
+    const val = acervoSearchInput.value.trim();
+    if (val.length >= 2) {
+      acervoDebounceTimer = setTimeout(() => searchAcervo(val), 350);
+    } else if (val.length === 0) {
+      clearAcervoSearch();
+    }
+  });
+
+  // Checagem em tempo real ao digitar PN
+  let pnLookupTimer = null;
+  async function checkPnInAcervo() {
+    const pn = partNumberInput.value.trim();
+    const brand = getSelectedBrand();
+    if (!pn || pn.length < 3) {
+      pnLookupStatus.hidden = true;
+      return;
+    }
+    try {
+      const resp = await fetch(`/api/datasheets/lookup?part_number=${encodeURIComponent(pn)}&brand=${encodeURIComponent(brand)}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.found && data.datasheet) {
+          pnLookupStatus.hidden = false;
+          pnLookupStatus.textContent = '⚡ Já no Acervo!';
+          pnLookupStatus.title = 'Clique para carregar instantaneamente do banco de dados';
+          pnLookupStatus.style.cursor = 'pointer';
+          pnLookupStatus.onclick = () => loadSavedDatasheet(data.datasheet);
+          return;
+        }
+      }
+    } catch {}
+    pnLookupStatus.hidden = true;
+  }
+
+  partNumberInput.addEventListener('input', () => {
+    clearTimeout(pnLookupTimer);
+    pnLookupTimer = setTimeout(checkPnInAcervo, 500);
+  });
+  brandSelect.addEventListener('change', () => {
+    clearTimeout(pnLookupTimer);
+    pnLookupTimer = setTimeout(checkPnInAcervo, 500);
+  });
+
+  // =========================================================================
+  // 7. ENVIO DO FORMULÁRIO E GERAÇÃO DOS DATASHEETS BILÍNGUES
+  // =========================================================================
+  async function submitDatasheetForm(forceRegen = false) {
     const brand = getSelectedBrand();
     const partNumber = partNumberInput.value.trim();
 
@@ -274,6 +488,7 @@ document.addEventListener('DOMContentLoaded', () => {
       company_notes: companyNotesInput.value.trim(),
       sources: sources,
       model: aiModelSelect.value,
+      force_regenerate: forceRegen,
       image_p1_data_url: p1ImageDataUrl,
       image_p1_name: p1ImageName,
       image_p3_data_url: p3ImageDataUrl,
@@ -282,8 +497,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Bloqueio de interface e exibição de progresso
     generateBtn.disabled = true;
+    forceGenerateBtn.disabled = true;
     generationStatus.hidden = false;
-    statusMessage.textContent = `A IA local (${payload.model}) está sintetizando a documentação de engenharia para ${brand} ${partNumber} em DUAS versões (pt-BR e en-US)...`;
+    statusMessage.textContent = forceRegen
+      ? `A IA local (${payload.model}) está regenerando a documentação para ${brand} ${partNumber}...`
+      : `Consultando acervo ou sintetizando documentação com a IA local (${payload.model}) para ${brand} ${partNumber}...`;
 
     try {
       const resp = await fetch('/api/datasheets/generate', {
@@ -309,14 +527,32 @@ document.addEventListener('DOMContentLoaded', () => {
       docActionsSection.hidden = false;
       switchLanguage('pt_BR');
 
+      if (bilingualDoc.cached) {
+        docReadyStatus.textContent = `⚡ Recuperado do Acervo (${brand})`;
+        forceGenerateBtn.hidden = false;
+      } else {
+        docReadyStatus.textContent = `✔ 2 versões salvas no Acervo`;
+        forceGenerateBtn.hidden = false;
+      }
+
       // Scroll suave até a prévia
       previewPtContainer.scrollIntoView({ behavior: 'smooth' });
     } catch (err) {
       alert(`Falha na geração do DataSheet: ${err.message}`);
     } finally {
       generateBtn.disabled = false;
+      forceGenerateBtn.disabled = false;
       generationStatus.hidden = true;
     }
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitDatasheetForm(false);
+  });
+
+  forceGenerateBtn.addEventListener('click', () => {
+    submitDatasheetForm(true);
   });
 
   // 7. Alternar Modo de Edição Inline WYSIWYG

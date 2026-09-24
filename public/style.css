@@ -891,6 +891,157 @@ textarea:focus {
   margin: 8mm 10mm;
 }
 
+/* Acervo de DataSheets Salvos */
+.acervo-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  margin-bottom: 24px;
+}
+.acervo-search-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.acervo-search-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.acervo-input {
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13.5px;
+}
+.acervo-input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+.acervo-results {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+.acervo-results.loading {
+  color: #38bdf8;
+  font-size: 13px;
+}
+.acervo-results.error {
+  color: #f87171;
+  font-size: 13px;
+}
+.acervo-items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.acervo-item-card {
+  background: #1e293b;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.acervo-item-card:hover {
+  border-color: #38bdf8;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.acervo-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.acervo-brand-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--brand-primary);
+  color: #fff;
+  text-transform: uppercase;
+}
+.acervo-pn-badge {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+.acervo-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #cbd5e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.acervo-card-meta {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.acervo-open-btn {
+  margin-top: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(2, 132, 199, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s ease;
+}
+.acervo-open-btn:hover {
+  background: rgba(2, 132, 199, 0.4);
+}
+.lookup-status {
+  font-size: 11px;
+  font-weight: 600;
+  color: #38bdf8;
+}
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 9px 16px;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.btn-outline:hover {
+  border-color: #64748b;
+  color: #fff;
+}
+.btn-secondary {
+  background: #334155;
+  border: 1px solid #475569;
+  color: #f8fafc;
+  padding: 9px 16px;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.btn-secondary:hover {
+  background: #475569;
+}
+
 @media print {
   html, body, .app-wrapper, .app-main, .preview-container {
     display: block !important;
@@ -904,6 +1055,7 @@ textarea:focus {
 
   .app-header,
   .form-section,
+  .acervo-section,
   .doc-actions-bar,
   button,
   input,

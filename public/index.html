@@ -26,6 +26,22 @@
 
     <!-- Conteúdo Principal -->
     <main class="app-main">
+      <!-- Acervo de DataSheets Salvos no Banco -->
+      <section class="acervo-section card">
+        <div class="card-header">
+          <h2>📚 Acervo de DataSheets Salvos no Banco</h2>
+          <span class="badge-tag">PostgreSQL 10.88.30.60</span>
+        </div>
+        <div class="acervo-search-container">
+          <div class="acervo-search-row">
+            <input type="text" id="acervo-search-input" class="acervo-input" placeholder="🔍 Pesquisar por Part Number, título, modelo ou fabricante (ex.: 21500000, 3172694, Válvula, Actros, FH)...">
+            <button type="button" id="acervo-search-btn" class="btn btn-secondary">Buscar no Acervo</button>
+            <button type="button" id="acervo-clear-btn" class="btn btn-outline" hidden>Limpar</button>
+          </div>
+          <div id="acervo-results-container" class="acervo-results" hidden></div>
+        </div>
+      </section>
+
       <!-- Painel de Configuração e Entrada -->
       <section class="form-section card">
         <div class="card-header">
@@ -61,7 +77,10 @@
             </div>
 
             <div class="input-group">
-              <label for="part-number-input">Part Number OEM *</label>
+              <div class="label-with-hint">
+                <label for="part-number-input">Part Number OEM *</label>
+                <span id="pn-lookup-status" class="lookup-status" hidden></span>
+              </div>
               <input type="text" id="part-number-input" placeholder="Ex.: 21500000 ou A 000 000 00 00" required>
             </div>
 
@@ -176,6 +195,10 @@ Fabricante original Knorr-Bremse K012345. Tensão nominal 24V. Pressão máxima 
               <button type="submit" id="generate-btn" class="primary-btn">
                 <span class="btn-icon">⚡</span>
                 <span class="btn-text">Gerar DataSheet Oficial com IA</span>
+              </button>
+              <button type="button" id="force-generate-btn" class="btn btn-outline" hidden>
+                <span>🔄</span>
+                <span>Forçar Regeneração com IA</span>
               </button>
             </div>
           </div>

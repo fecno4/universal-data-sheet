@@ -1,4 +1,5 @@
 import http from 'node:http';
+import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,63 @@ const __dirname = path.dirname(__filename);
 const PORT = parseInt(process.env.PORT || '8098', 10);
 const OLLAMA_BASE_URL = process.env.OLLAMA_URL || 'http://10.88.30.12:11434';
 const DEFAULT_MODEL = 'gpt-oss:20b';
+const MULTI_API_URL = process.env.MULTI_API_URL || 'https://10.88.30.60:8443';
+const MULTI_TOKEN = process.env.MULTI_TOKEN || 'Yr5Ro5lZrZbIra2fTJaA0e_8TckOJLvGObyxycvLTITxxF7awaOPjOUj28BWCmcR';
+
+async function queryMultiApi(pathWithQuery, method = 'GET', bodyData = null) {
+  return new Promise((resolve) => {
+    try {
+      const targetUrl = new URL(pathWithQuery, MULTI_API_URL);
+      const reqHeaders = {
+        'Authorization': `Bearer ${MULTI_TOKEN}`,
+        'Accept': 'application/json'
+      };
+      let payloadStr = null;
+      if (bodyData && (method === 'POST' || method === 'PUT')) {
+        payloadStr = JSON.stringify(bodyData);
+        reqHeaders['Content-Type'] = 'application/json';
+        reqHeaders['Content-Length'] = Buffer.byteLength(payloadStr);
+      }
+
+      const clientReq = https.request(targetUrl, {
+        method,
+        headers: reqHeaders,
+        rejectUnauthorized: false,
+        timeout: 15000
+      }, (resp) => {
+        let raw = '';
+        resp.on('data', chunk => { raw += chunk; });
+        resp.on('end', () => {
+          if (resp.statusCode >= 200 && resp.statusCode < 300) {
+            try {
+              resolve(JSON.parse(raw));
+            } catch {
+              resolve(null);
+            }
+          } else {
+            console.warn(`[Multi-API] Resposta HTTP ${resp.statusCode} para ${pathWithQuery}: ${raw.slice(0, 200)}`);
+            resolve(null);
+          }
+        });
+      });
+
+      clientReq.on('error', (err) => {
+        console.warn(`[Multi-API Error] ${pathWithQuery}: ${err.message}`);
+        resolve(null);
+      });
+      clientReq.on('timeout', () => {
+        clientReq.destroy();
+        resolve(null);
+      });
+
+      if (payloadStr) clientReq.write(payloadStr);
+      clientReq.end();
+    } catch (e) {
+      console.warn(`[Multi-API Exception] ${e.message}`);
+      resolve(null);
+    }
+  });
+}
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
@@ -514,7 +572,50 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // API endpoint de geração de DataSheet
+  // API endpoints para o Acervo de DataSheets (PostgreSQL no container 10.88.30.60)
+  if (pathname === '/api/datasheets/lookup' && req.method === 'GET') {
+    const pn = parsedUrl.searchParams.get('part_number') || '';
+    const brand = parsedUrl.searchParams.get('brand') || 'Scania';
+    if (!pn) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'part_number é obrigatório' }));
+      return;
+    }
+    const result = await queryMultiApi(`/v1/datasheets/lookup?part_number=${encodeURIComponent(pn)}&brand=${encodeURIComponent(brand)}`);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result || { found: false, datasheet: null }));
+    return;
+  }
+
+  if (pathname === '/api/datasheets/search' && req.method === 'GET') {
+    const q = parsedUrl.searchParams.get('q') || '';
+    const brand = parsedUrl.searchParams.get('brand') || '';
+    const limit = parsedUrl.searchParams.get('limit') || '25';
+    const offset = parsedUrl.searchParams.get('offset') || '0';
+    let queryParams = `limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`;
+    if (q) queryParams += `&q=${encodeURIComponent(q)}`;
+    if (brand) queryParams += `&brand=${encodeURIComponent(brand)}`;
+    const result = await queryMultiApi(`/v1/datasheets/search?${queryParams}`);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result || { total: 0, items: [], limit: parseInt(limit), offset: parseInt(offset), has_more: false }));
+    return;
+  }
+
+  const dsIdMatch = /^\/api\/datasheets\/([0-9a-fA-F-]{36})$/.exec(pathname);
+  if (dsIdMatch && req.method === 'GET') {
+    const dsId = dsIdMatch[1];
+    const result = await queryMultiApi(`/v1/datasheets/${dsId}`);
+    if (!result) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'DataSheet não encontrado no acervo' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result));
+    return;
+  }
+
+  // API endpoint de geração de DataSheet (com checagem e persistência no banco de dados)
   if (pathname === '/api/datasheets/generate' && req.method === 'POST') {
     let bodyStr = '';
     req.on('data', chunk => {
@@ -536,8 +637,29 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        const brand = (reqData.brand || 'OEM').trim();
+        const pn = String(reqData.part_number).trim();
+        const forceRegen = Boolean(reqData.force_regenerate);
+
+        // 1. Checagem prévia no banco de dados de datasheets (se não for forçada nova geração)
+        if (!forceRegen) {
+          const lookup = await queryMultiApi(`/v1/datasheets/lookup?part_number=${encodeURIComponent(pn)}&brand=${encodeURIComponent(brand)}`);
+          if (lookup && lookup.found && lookup.datasheet && lookup.datasheet.pt_BR && lookup.datasheet.en_US) {
+            console.log(`[DataSheet] ${brand} PN ${pn} localizado no banco de dados. Retornando instantaneamente.`);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              cached: true,
+              database_id: lookup.datasheet.id,
+              updated_at: lookup.datasheet.updated_at,
+              pt_BR: lookup.datasheet.pt_BR,
+              en_US: lookup.datasheet.en_US
+            }));
+            return;
+          }
+        }
+
         const model = reqData.model || DEFAULT_MODEL;
-        console.log(`[DataSheet] Solicitado para marca: ${reqData.brand || 'OEM'}, PN: ${reqData.part_number} via IA: ${model}`);
+        console.log(`[DataSheet] Solicitado para marca: ${brand}, PN: ${pn} via IA: ${model} (force: ${forceRegen})`);
 
         const prompt = buildPrompt(reqData);
         let aiData = await callOllama(prompt, model);
@@ -555,8 +677,41 @@ const server = http.createServer(async (req, res) => {
 
         const bilingualDoc = assembleBilingualDocument(reqData, aiData);
 
+        // 2. Gravação automática no banco de dados PostgreSQL
+        let dbId = null;
+        try {
+          const saveRes = await queryMultiApi('/v1/datasheets/save', 'POST', {
+            brand: brand,
+            part_number: pn,
+            title: bilingualDoc.pt_BR?.page1?.title || reqData.title || 'Componente Veicular',
+            title_en: bilingualDoc.en_US?.page1?.title || reqData.title || 'Vehicle Component',
+            model_compat: reqData.application || null,
+            category: bilingualDoc.pt_BR?.page1?.eyebrow || reqData.category || null,
+            application: bilingualDoc.pt_BR?.page1?.application || reqData.application || null,
+            custom_notes: reqData.company_notes || null,
+            ai_model: model,
+            sources: (reqData.sources || '').split('\n').map(s => s.trim()).filter(Boolean),
+            images: {
+              image_data_url: reqData.image_p1_data_url || null,
+              diagram_data_url: reqData.image_p3_data_url || null
+            },
+            content_pt: bilingualDoc.pt_BR,
+            content_en: bilingualDoc.en_US
+          });
+          if (saveRes && saveRes.id) {
+            dbId = saveRes.id;
+            console.log(`[DataSheet] Salvo com sucesso no banco de dados com ID: ${dbId}`);
+          }
+        } catch (saveErr) {
+          console.warn(`[DataSheet Save Warning]: ${saveErr.message}`);
+        }
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(bilingualDoc));
+        res.end(JSON.stringify({
+          cached: false,
+          database_id: dbId,
+          ...bilingualDoc
+        }));
       } catch (err) {
         console.error('[Generate Error]:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
