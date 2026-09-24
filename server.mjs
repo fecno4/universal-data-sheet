@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 
 const PORT = parseInt(process.env.PORT || '8098', 10);
 const OLLAMA_BASE_URL = process.env.OLLAMA_URL || 'http://10.88.30.12:11434';
-const DEFAULT_MODEL = 'gpt-oss:20b';
+const DEFAULT_MODEL = 'gemma4:12b-it-qat';
 const MULTI_API_URL = process.env.MULTI_API_URL || 'https://10.88.30.60:8443';
 const MULTI_TOKEN = process.env.MULTI_TOKEN || 'Yr5Ro5lZrZbIra2fTJaA0e_8TckOJLvGObyxycvLTITxxF7awaOPjOUj28BWCmcR';
 
@@ -166,7 +166,7 @@ async function callOllama(prompt, model = DEFAULT_MODEL) {
       temperature: 0.1,
       top_p: 0.9,
       num_ctx: 4096,
-      num_predict: 2200
+      num_predict: 2500
     }
   };
 
@@ -248,7 +248,8 @@ const CATEGORY_MAP_PT_EN = [
   [/combust[íi]vel\s*e\s*escape/i, 'FUEL & EXHAUST SYSTEM'],
   [/sistema\s+el[ée]trico/i, 'ELECTRICAL SYSTEM'],
   [/chassi\s*e\s*estrutura/i, 'CHASSIS & STRUCTURAL FRAME'],
-  [/cabine\s*e\s*carroceria/i, 'CABIN & BODYWORK'],
+  [/suspens[ãa]o\s*(de\s+|da\s+)?cabine/i, 'CABIN SUSPENSION SYSTEM'],
+  [/cabine\s*(e\s*carroceria)?/i, 'CABIN SYSTEM'],
   [/eixo\s*traseiro|diferencial/i, 'REAR AXLE & DIFFERENTIAL']
 ];
 
@@ -259,12 +260,60 @@ function translateCategoryToEn(category) {
     if (regex.test(clean)) return enTitle;
   }
   const upper = clean.toUpperCase();
-  if (upper.endsWith(' SYSTEM')) return upper;
-  let res = clean.replace(/^sistema\s+(de\s+)?/i, '').trim();
+  if (/\bSYSTEMS?$/i.test(upper)) return upper.replace(/\bCABINE\b/g, 'CABIN');
+  let res = clean.replace(/^sistemas?\s+(de\s+)?/i, '').trim();
+  res = res.replace(/\bcabine\b/gi, 'Cabin');
   return (res.toUpperCase() + ' SYSTEM');
 }
 
 const COMPONENT_TRANSLATIONS = [
+  // Sensores e eletrônica
+  [/\bsensor\s+de\s+nox\b/gi, 'NOx Sensor'],
+  [/\bsensor\s+de\s+temperatura\b/gi, 'Temperature Sensor'],
+  [/\bsensor\s+de\s+press[ãa]o\b/gi, 'Pressure Sensor'],
+  [/\bsensor\s+de\s+rota[çc][ãa]o\b/gi, 'Rotation / RPM Sensor'],
+  [/\bsensor\s+de\s+velocidade\b/gi, 'Speed Sensor'],
+  [/\bsensor\s+de\s+posi[çc][ãa]o\b/gi, 'Position Sensor'],
+  [/\bsensor\s+de\s+n[íi]vel\b/gi, 'Level Sensor'],
+  [/\bsensor\s+de\s+massa\s+de\s+ar\b/gi, 'Mass Air Flow Sensor'],
+  [/\bsensor\s+de\s+oxig[êe]nio\b/gi, 'Oxygen Sensor'],
+  [/\bsonda\s+lambda\b/gi, 'Lambda Sensor'],
+  [/\bsensor\s+de\s+desgaste\b/gi, 'Wear Sensor'],
+  [/\bsensor\s+abs\b/gi, 'ABS Wheel Speed Sensor'],
+  [/\bsensor\s+indutivo\b/gi, 'Inductive Sensor'],
+  [/\bm[óo]dulo\s+de\s+comando\b/gi, 'Control Module'],
+  [/\bm[óo]dulo\s+eletr[ôo]nico\b/gi, 'Electronic Module'],
+  [/\bunidade\s+de\s+comando\b/gi, 'Control Unit'],
+  [/\batuador\b/gi, 'Actuator'],
+
+  // Motor, injeção e arrefecimento
+  [/\binjetor\s+de\s+combust[íi]vel\b/gi, 'Fuel Injector'],
+  [/\binjetor\b/gi, 'Injector'],
+  [/\bbico\s+injetor\b/gi, 'Injector Nozzle'],
+  [/\bbomba\s+de\s+combust[íi]vel\b/gi, 'Fuel Pump'],
+  [/\bbomba\s+de\s+alta\s+press[ãa]o\b/gi, 'High Pressure Pump'],
+  [/\bbomba\s+de\s+arla\b/gi, 'DEF / Urea Dosing Pump'],
+  [/\bbomba\s+d['’]?água\b/gi, 'Water Pump'],
+  [/\bbomba\s+de\s+[óo]leo\b/gi, 'Oil Pump'],
+  [/\btermostato\b/gi, 'Thermostat'],
+  [/\bv[áa]lvula\s+termost[áa]tica\b/gi, 'Thermostatic Valve'],
+  [/\bturbocompressor\b/gi, 'Turbocharger'],
+  [/\bturbina\b/gi, 'Turbocharger'],
+  [/\bintercooler\b/gi, 'Intercooler / Charge Air Cooler'],
+  [/\bradiador\b/gi, 'Radiator'],
+  [/\bventoinha\b/gi, 'Cooling Fan'],
+  [/\bh[ée]lice\b/gi, 'Fan Blade'],
+  [/\bembreagem\s+viscosa\b/gi, 'Viscous Fan Clutch'],
+  [/\balternador\b/gi, 'Alternator'],
+  [/\bmotor\s+de\s+partida\b/gi, 'Starter Motor'],
+  [/\bmotor\s+de\s+arranque\b/gi, 'Starter Motor'],
+  [/\bfiltro\s+de\s+ar\b/gi, 'Air Filter'],
+  [/\bfiltro\s+de\s+combust[íi]vel\b/gi, 'Fuel Filter'],
+  [/\bfiltro\s+de\s+[óo]leo\b/gi, 'Oil Filter'],
+  [/\bfiltro\s+secador\b/gi, 'Air Dryer Cartridge'],
+  [/\bfiltro\s+separador\b/gi, 'Fuel Water Separator Filter'],
+  [/\belemento\s+filtrante\b/gi, 'Filter Element'],
+
   // Molas e suspensão
   [/\bmola\s+principal\s+parab[óo]lica\b/gi, 'Parabolic Main Leaf Spring'],
   [/\bmola\s+parab[óo]lica\b/gi, 'Parabolic Leaf Spring'],
@@ -282,6 +331,18 @@ const COMPONENT_TRANSLATIONS = [
   [/\btirante\b/gi, 'Radius Rod'],
   [/\bbucha\s+de\s+suspens[ãa]o\b/gi, 'Suspension Bushing'],
   [/\bbucha\b/gi, 'Bushing'],
+  // Cabine e carroceria
+  [/\bamortecedor\s+dianteiro\s+(da\s+)?cabine\b/gi, 'Front Cabin Shock Absorber'],
+  [/\bamortecedor\s+traseiro\s+(da\s+)?cabine\b/gi, 'Rear Cabin Shock Absorber'],
+  [/\bamortecedor\s+(da\s+)?cabine\b/gi, 'Cabin Shock Absorber'],
+  [/\bamortecedor\s+dianteiro\b/gi, 'Front Shock Absorber'],
+  [/\bamortecedor\s+traseiro\b/gi, 'Rear Shock Absorber'],
+  [/\bmola\s+pneum[áa]tica\s+(da\s+)?cabine\b/gi, 'Cabin Air Spring'],
+  [/\bsuspens[ãa]o\s+(da\s+)?cabine\b/gi, 'Cabin Suspension'],
+  [/\bcilindro\s+de\s+basculamento\b/gi, 'Cab Tilt Cylinder'],
+  [/\bbomba\s+de\s+basculamento\b/gi, 'Cab Tilt Pump'],
+  [/\btravamento\s+(da\s+)?cabine\b/gi, 'Cab Lock'],
+  [/\bfechadura\s+(da\s+)?cabine\b/gi, 'Cab Door Lock'],
   [/\bamortecedor\s+de\s+impacto\b/gi, 'Shock Absorber'],
   [/\bamortecedor\b/gi, 'Shock Absorber'],
   [/\bbarra\s+estabilizadora\b/gi, 'Stabilizer Bar / Anti-Roll Bar'],
@@ -321,6 +382,17 @@ function translateComponentTitleToEn(title, brand = '') {
   for (const [pattern, replacement] of COMPONENT_TRANSLATIONS) {
     t = t.replace(pattern, replacement);
   }
+  t = t.replace(/\bsensor\s+de\s+([A-Za-z0-9_-]+)\b/gi, '$1 Sensor')
+       .replace(/\bdianteir[oa]\s+(da\s+)?cabine\b/gi, 'Front Cabin')
+       .replace(/\btraseir[oa]\s+(da\s+)?cabine\b/gi, 'Rear Cabin')
+       .replace(/\b(da\s+)?cabine\b/gi, 'Cabin')
+       .replace(/\bdianteir[oa]\b/gi, 'Front')
+       .replace(/\btraseir[oa]\b/gi, 'Rear')
+       .replace(/\besquerd[oa]\b/gi, 'Left')
+       .replace(/\bdireit[oa]\b/gi, 'Right');
+  // Reordena modificadores residuais se o substantivo principal já foi traduzido antes
+  t = t.replace(/\b(Shock Absorber|Air Spring|Bushing|Brake Chamber|Sensor)\s+(Front|Rear)\s+(Cabin)\b/gi, '$2 $3 $1')
+       .replace(/\b(Shock Absorber|Air Spring|Bushing|Brake Chamber|Sensor)\s+(Front|Rear)\b/gi, '$2 $1');
   if (brand && t.toLowerCase().includes(brand.toLowerCase())) {
     const brandRegex = new RegExp(`\\b${brand}\\b`, 'gi');
     t = t.replace(brandRegex, '').replace(/\s+/g, ' ').trim();
@@ -365,6 +437,27 @@ function translatePackagingTerms(str) {
        .replace(/\bcom\s+suspens[ãa]o\s+mec[âa]nica\s+e\s+pneum[áa]tica\b/gi, 'with mechanical and pneumatic suspension')
        .replace(/\bcom\s+suspens[ãa]o\s+pneum[áa]tica\b/gi, 'with pneumatic suspension')
        .replace(/\bcom\s+suspens[ãa]o\s+mec[âa]nica\b/gi, 'with mechanical suspension')
+       .replace(/\bmontadora\s*:/gi, 'Vehicle Manufacturer:')
+       .replace(/\bdescri[çc][ãa]o\s*:/gi, 'Description:')
+       .replace(/\bcaminh[õo]es\s+e\s+[ôo]nibus\b/gi, 'Trucks and Buses')
+       .replace(/\bcaminh[õo]es\b/gi, 'Trucks')
+       .replace(/\b[ôo]nibus\b/gi, 'Buses')
+       .replace(/\ba\s+partir\s+de\s+(\d{4})\b/gi, 'from $1 onward')
+       .replace(/\ba\s+partir\s+de\b/gi, 'from')
+       .replace(/\bat[ée]\s+(\d{4})\b/gi, 'up to $1')
+       .replace(/\bestrutura\b/gi, 'Structure')
+       .replace(/\bposi[çc][ãa]o\s+indicada\s*:/gi, 'indicated position:')
+       .replace(/\bposi[çc][ãa]o\b/gi, 'position')
+       .replace(/\bamortecedor\s+dianteiro\s+(da\s+)?cabine\b/gi, 'front cabin shock absorber')
+       .replace(/\bamortecedor\s+traseiro\s+(da\s+)?cabine\b/gi, 'rear cabin shock absorber')
+       .replace(/\bamortecedor\s+(da\s+)?cabine\b/gi, 'cabin shock absorber')
+       .replace(/\bamortecedor\s+dianteiro\b/gi, 'front shock absorber')
+       .replace(/\bamortecedor\s+traseiro\b/gi, 'rear shock absorber')
+       .replace(/\bdianteir[oa]\b/gi, 'front')
+       .replace(/\btraseir[oa]\b/gi, 'rear')
+       .replace(/\blado\s+direito\b/gi, 'right side')
+       .replace(/\blado\s+esquerdo\b/gi, 'left side')
+       .replace(/\bambos\s+os\s+lados\b/gi, 'both sides')
        .replace(/\bfabricante\s*:/gi, 'Manufacturer:')
        .replace(/\b e \b/g, ' and ');
   return s;
@@ -613,12 +706,13 @@ function generateFallback(data) {
   const naTextEn = 'Not located in specific technical sources for this reference.';
 
   // Higieniza categoria pt_BR para evitar "no sistema sistema de..."
-  const cleanCatPt = rawCategory.replace(/^sistema\s+(de\s+)?/i, '').trim();
+  const cleanCatPt = rawCategory.replace(/^sistemas?\s+(de\s+)?/i, '').trim();
   const titlePt = rawTitle.toUpperCase();
   const eyebrowPt = `${brand} • ${rawCategory.toUpperCase()}`;
 
   // Tradução determinística para en_US
   const enCategory = translateCategoryToEn(rawCategory);
+  const cleanCatEn = enCategory.replace(/\s+systems?$/i, '').trim();
   const enTitle = translateComponentTitleToEn(rawTitle, brand);
   const eyebrowEn = `${brand} • ${enCategory}`;
 
@@ -682,7 +776,7 @@ function generateFallback(data) {
     en_US: {
       categoria_eyebrow: eyebrowEn,
       componente_titulo: enTitle,
-      funcao_tecnica: `Original technical component engineered for operation within the ${enCategory.toLowerCase()}.`,
+      funcao_tecnica: `Original technical component engineered for operation within the ${cleanCatEn.toLowerCase()} system.`,
       aplicacao_detalhada: appEn,
       referencias_cruzadas: enRefs || naTextEn,
       alertas_cotacao: alertasEn,
@@ -834,7 +928,7 @@ function assembleSingleDocument(reqData, aiData, lang = 'pt_BR') {
   const metrics = isEn ? [
     { label: 'OEM Part Number', value: pn },
     { label: 'Manufacturer', value: brand },
-    { label: 'Catalog / Section', value: reqData.catalog_ref || 'General Catalog' },
+    { label: 'Catalog / Section', value: translatePackagingTerms(reqData.catalog_ref || 'General Catalog') },
     { label: 'Quantity', value: String(reqData.quantity || '1') }
   ] : [
     { label: 'Código OEM', value: pn },
@@ -900,7 +994,7 @@ function assembleSingleDocument(reqData, aiData, lang = 'pt_BR') {
     page3: {
       title: isEn ? 'Catalog & validation' : 'Catálogo e validação',
       subtitle: isEn
-        ? `${brand} - catalog reference: ${reqData.catalog_ref || 'General'} | indicated position: ${reqData.position || '1'}`
+        ? `${brand} - catalog reference: ${translatePackagingTerms(reqData.catalog_ref || 'General')} | indicated position: ${reqData.position || '1'}`
         : `${brand} - referência/catálogo: ${reqData.catalog_ref || 'Geral'} | posição indicada: ${reqData.position || '1'}`,
       image_data_url: reqData.image_p3_data_url || null,
       image_name: reqData.image_p3_name || null,
@@ -952,6 +1046,29 @@ function sanitizeEnglishDocument(doc, brand = '') {
     });
   }
 
+  // Page 1 metrics
+  if (Array.isArray(doc.page1?.metrics)) {
+    for (const m of doc.page1.metrics) {
+      if (m.label) {
+        if (/grupo\s*\/\s*se[çc][ãa]o/i.test(m.label)) m.label = 'Group / Section';
+        else if (/part\s+number/i.test(m.label)) m.label = 'Part Number';
+        else if (/montadora/i.test(m.label)) m.label = 'Vehicle Manufacturer';
+        else if (/cat[áa]logo\s*\/\s*se[çc][ãa]o/i.test(m.label) || /cat[áa]logo\s*\/\s*grupo/i.test(m.label)) m.label = 'Catalog / Section';
+        else if (/quantidade/i.test(m.label)) m.label = 'Quantity';
+        else if (/c[óo]digo\s+oem/i.test(m.label)) m.label = 'OEM Part Number';
+        else if (/fabricante/i.test(m.label)) m.label = 'Manufacturer';
+      }
+      if (m.value) {
+        m.value = translatePackagingTerms(translateDimensionKeywords(m.value));
+      }
+    }
+  }
+
+  // Page 1 cross_references
+  if (doc.page1?.cross_references) {
+    doc.page1.cross_references = translatePackagingTerms(translateDimensionKeywords(doc.page1.cross_references));
+  }
+
   // Page 1 application
   if (doc.page1?.application) {
     let app = doc.page1.application;
@@ -970,14 +1087,30 @@ function sanitizeEnglishDocument(doc, brand = '') {
         spec.value = translateComponentTitleToEn(spec.value, brandUpper);
       } else if (spec.label === 'Function') {
         let fn = spec.value;
+        const mInner = fn.match(/\(([^)]+)\)/);
+        if (mInner) {
+          const innerPt = mInner[1];
+          const innerEn = translateComponentTitleToEn(innerPt, brandUpper).toLowerCase();
+          fn = fn.replace(`(${innerPt})`, `(${innerEn})`);
+        }
         fn = fn.replace(/\bsistema\s+de\s+suspens[ãa]o\s+system\b/gi, 'suspension system')
                .replace(/\bsistema\s+de\s+suspens[ãa]o\b/gi, 'suspension system')
                .replace(/\bsistema\s+de\s+freios?\b/gi, 'brake system')
                .replace(/\bsistema\s+pneum[áa]tico\b/gi, 'pneumatic system')
-               .replace(/\bsistema\s+de\s+dire[çc][ãa]o\b/gi, 'steering system');
+               .replace(/\bsistema\s+de\s+dire[çc][ãa]o\b/gi, 'steering system')
+               .replace(/\bsistemas?\s+de\s+escape\/combust[íi]vel\b/gi, 'fuel & exhaust system')
+               .replace(/\bfuel & exhaust systems\b/gi, 'fuel & exhaust system')
+               .replace(/\bcabine\s+system\b/gi, 'cabin system')
+               .replace(/\bwithin\s+the\s+cabine\b/gi, 'within the cabin');
         if (/^componente\s+t[ée]cnico\s+original\s+destinado/i.test(fn)) {
           fn = fn.replace(/^componente\s+t[ée]cnico\s+original\s+destinado\s+[àa]\s+aplica[çc][ãa]o\s+e\s+funcionamento\s+no\s+sistema\s+(?:de\s+)?/i, 'Original technical component engineered for operation within the ')
                  .replace(/\.$/, '') + ' system.';
+        } else if (/^componente\s+original\s+scania/i.test(fn)) {
+          const mComp = fn.match(/^componente\s+original\s+scania\s*(?:\(([^)]*)\))?\s*para\s+aplica[çc][ãa]o\s+no\s+sistema\s+(?:de\s+)?/i);
+          const compStr = (mComp && mComp[1]) ? ` (${translateComponentTitleToEn(mComp[1], brandUpper).toLowerCase()})` : '';
+          fn = fn.replace(/^componente\s+original\s+scania\s*(?:\([^)]*\))?\s*para\s+aplica[çc][ãa]o\s+no\s+sistema\s+(?:de\s+)?/i, `Genuine Scania technical component${compStr} engineered for operation within the `).replace(/\.$/, '');
+          if (!fn.endsWith('system')) fn += ' system.';
+          else fn += '.';
         }
         spec.value = fn;
       } else if (spec.label === 'Dimensions' || spec.label === 'Component Manufacturer Code' || spec.label === 'Cross References & Equivalents') {
@@ -1001,10 +1134,13 @@ function sanitizeEnglishDocument(doc, brand = '') {
           spec.value = 'Standardized connections compliant with OEM automotive standards.';
         }
       } else if (spec.label === 'Technical Notes') {
-        if (/seguir\s+as\s+normas\s+de\s+montagem/i.test(spec.value)) {
-          spec.value = 'Follow assembly standards and torque specifications provided in OEM service manuals.';
+        let val = spec.value;
+        val = val.replace(/\bConfigura[çc][ãa]o\s+requerida\s+do\s+ve[íi]culo\s*:/gi, 'Required vehicle build configuration:')
+                 .replace(/\bN[ãa]o\s+localizado\s+em\s+fonte\s+t[ée]cnica\s+espec[íi]fica\b/gi, 'Not located in specific technical sources');
+        if (/seguir\s+as\s+normas\s+de\s+montagem/i.test(val)) {
+          val = 'Follow assembly standards and torque specifications provided in OEM service manuals.';
         }
-        spec.value = translatePackagingTerms(translateDimensionKeywords(spec.value));
+        spec.value = translatePackagingTerms(translateDimensionKeywords(val));
       } else if (spec.label === 'Application') {
         let a = spec.value;
         a = a.replace(/\bAplica[çc][ãa]o\s+de\s+mercado\s*\/\s*implemento\s*:/gi, 'Market / implement application:')
@@ -1014,6 +1150,11 @@ function sanitizeEnglishDocument(doc, brand = '') {
         spec.value = translatePackagingTerms(translateDimensionKeywords(a));
       }
     }
+  }
+
+  // Page 3 subtitle
+  if (doc.page3?.subtitle) {
+    doc.page3.subtitle = translatePackagingTerms(translateDimensionKeywords(doc.page3.subtitle));
   }
 
   // Page 3 highlight
@@ -1031,12 +1172,25 @@ function sanitizeEnglishDocument(doc, brand = '') {
 function sanitizePortugueseDocument(doc) {
   if (!doc) return doc;
 
-  // Corrige erro de duplicidade de "sistema"
+  // Corrige erro de duplicidade de "sistema" e traduz termos técnicos residuais
   if (Array.isArray(doc.page2?.specs)) {
     for (const spec of doc.page2.specs) {
       if (spec.label === 'Função' && typeof spec.value === 'string') {
         spec.value = spec.value.replace(/\bno\s+sistema\s+sistema\s+de\b/gi, 'no sistema de')
-                               .replace(/\bno\s+sistema\s+sistema\b/gi, 'no sistema');
+                               .replace(/\bno\s+sistema\s+sistema\b/gi, 'no sistema')
+                               .replace(/\bno\s+sistema\s+(?:de\s+)?sistemas?\s+(?:de\s+)?/gi, 'no sistema de ');
+      } else if (spec.label === 'Observações técnicas' && typeof spec.value === 'string') {
+        let val = spec.value;
+        const translations = {
+          'nox sensor make': 'Fabricante do sensor de NOx',
+          'nox sensor': 'Sensor de NOx',
+          'sensor make': 'Fabricante do sensor',
+          'engine make': 'Fabricante do motor'
+        };
+        for (const [enK, ptK] of Object.entries(translations)) {
+          val = val.replace(new RegExp(`\\b${enK}\\b`, 'gi'), ptK);
+        }
+        spec.value = val;
       }
     }
   }
