@@ -193,8 +193,11 @@ async function callOllama(prompt, model = DEFAULT_MODEL) {
 
       const result = await resp.json();
       const rawContent = result?.message?.content || '';
-      const cleanJson = rawContent.replace(/^```json\s*|\s*```$/gm, '').trim();
-      return JSON.parse(cleanJson);
+      const parsed = extractJsonObject(rawContent);
+      if (parsed) {
+        return parsed;
+      }
+      throw new Error(`Resposta não contém JSON estruturado válido: ${rawContent.slice(0, 100)}...`);
     } catch (err) {
       clearTimeout(timeoutId);
       console.warn(`[Ollama] Falha ao conectar em ${endpoint}: ${err.message}. Tentando próximo endpoint...`);
@@ -203,6 +206,168 @@ async function callOllama(prompt, model = DEFAULT_MODEL) {
 
   console.error('[Ollama Error]: Todos os endpoints de IA falharam.');
   return null;
+}
+
+function extractJsonObject(rawText) {
+  if (!rawText || typeof rawText !== 'string') return null;
+  // 1. Remove blocos de raciocínio <think>...</think>
+  let text = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  // 2. Remove blocos markdown ```json ... ```
+  text = text.replace(/^```(?:json)?\s*/gim, '').replace(/```\s*$/gim, '').trim();
+  // 3. Tenta parse direto
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object') return parsed;
+  } catch {}
+  // 4. Se houver preâmbulos ou texto antes/depois, extrai substring do primeiro '{' ao último '}'
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = text.substring(firstBrace, lastBrace + 1);
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {}
+  }
+  return null;
+}
+
+const CATEGORY_MAP_PT_EN = [
+  [/sistema\s+(de\s+)?suspens[ãa]o\s*(mec[âa]nica)?/i, 'SUSPENSION SYSTEM'],
+  [/suspens[ãa]o\s*mec[âa]nica/i, 'MECHANICAL SUSPENSION SYSTEM'],
+  [/suspens[ãa]o\s*pneum[áa]tica/i, 'PNEUMATIC SUSPENSION SYSTEM'],
+  [/sistema\s+(de\s+)?freios?(\s*e\s*ar\s*comprimido)?/i, 'BRAKE & COMPRESSED AIR SYSTEM'],
+  [/freios?(\s*e\s*ar\s*comprimido)?/i, 'BRAKE SYSTEM'],
+  [/sistema\s+pneum[áa]tico(\s*de\s*suspens[ãa]o)?/i, 'PNEUMATIC SUSPENSION SYSTEM'],
+  [/sistema\s+pneum[áa]tico/i, 'PNEUMATIC AIR SYSTEM'],
+  [/sistema\s+(de\s+)?dire[çc][ãa]o/i, 'STEERING SYSTEM'],
+  [/dire[çc][ãa]o/i, 'STEERING SYSTEM'],
+  [/sistema\s+(de\s+)?transmiss[ãa]o|c[âa]mbio/i, 'TRANSMISSION & DRIVETRAIN SYSTEM'],
+  [/sistema\s+(de\s+)?motor|controle\s+eletr[ôo]nico\s+do\s+motor/i, 'ENGINE SYSTEM'],
+  [/arrefecimento|refrigera[çc][ãa]o/i, 'COOLING SYSTEM'],
+  [/combust[íi]vel\s*e\s*escape/i, 'FUEL & EXHAUST SYSTEM'],
+  [/sistema\s+el[ée]trico/i, 'ELECTRICAL SYSTEM'],
+  [/chassi\s*e\s*estrutura/i, 'CHASSIS & STRUCTURAL FRAME'],
+  [/cabine\s*e\s*carroceria/i, 'CABIN & BODYWORK'],
+  [/eixo\s*traseiro|diferencial/i, 'REAR AXLE & DIFFERENTIAL']
+];
+
+function translateCategoryToEn(category) {
+  if (!category) return 'VEHICLE SYSTEM';
+  const clean = category.trim();
+  for (const [regex, enTitle] of CATEGORY_MAP_PT_EN) {
+    if (regex.test(clean)) return enTitle;
+  }
+  const upper = clean.toUpperCase();
+  if (upper.endsWith(' SYSTEM')) return upper;
+  let res = clean.replace(/^sistema\s+(de\s+)?/i, '').trim();
+  return (res.toUpperCase() + ' SYSTEM');
+}
+
+const COMPONENT_TRANSLATIONS = [
+  // Molas e suspensão
+  [/\bmola\s+principal\s+parab[óo]lica\b/gi, 'Parabolic Main Leaf Spring'],
+  [/\bmola\s+parab[óo]lica\b/gi, 'Parabolic Leaf Spring'],
+  [/\bmola\s+semi[- ]?el[íi]ptica\b/gi, 'Semi-Elliptic Leaf Spring'],
+  [/\bmola\s+pneum[áa]tica\s+completa\b/gi, 'Air Spring Assembly'],
+  [/\bmola\s+pneum[áa]tica\b/gi, 'Air Spring'],
+  [/\bfeixe\s+de\s+molas?\b/gi, 'Leaf Spring Pack'],
+  [/\bl[âa]mina\s+principal\b/gi, 'Main Leaf'],
+  [/\bl[âa]mina\b/gi, 'Leaf'],
+  [/\bl[âa]minas\b/gi, 'Leaves'],
+  [/\bgrampo\s+de\s+mola\b/gi, 'Spring U-Bolt'],
+  [/\bpino\s+de\s+centro\b/gi, 'Center Bolt'],
+  [/\bbra[çc]o\s+tensor\b/gi, 'Torque Arm / Radius Rod'],
+  [/\btirante\s+de\s+rea[çc][ãa]o\b/gi, 'Torque Rod'],
+  [/\btirante\b/gi, 'Radius Rod'],
+  [/\bbucha\s+de\s+suspens[ãa]o\b/gi, 'Suspension Bushing'],
+  [/\bbucha\b/gi, 'Bushing'],
+  [/\bamortecedor\s+de\s+impacto\b/gi, 'Shock Absorber'],
+  [/\bamortecedor\b/gi, 'Shock Absorber'],
+  [/\bbarra\s+estabilizadora\b/gi, 'Stabilizer Bar / Anti-Roll Bar'],
+  [/\bbarra\s+de\s+tor[çc][ãa]o\b/gi, 'Torsion Bar'],
+
+  // Freios e ar
+  [/\bc[âa]mara\s+de\s+freio\s+dupla\b/gi, 'Spring Brake Chamber'],
+  [/\bc[âa]mara\s+de\s+freio\b/gi, 'Brake Chamber'],
+  [/\bcu[íi]ca\s+de\s+freio\b/gi, 'Brake Chamber'],
+  [/\bv[áa]lvula\s+de\s+descarga\s+r[áa]pida\b/gi, 'Quick Release Valve'],
+  [/\bv[áa]lvula\s+rel[ée]\b/gi, 'Relay Valve'],
+  [/\bv[áa]lvula\s+moduladora\b/gi, 'Modulator Valve'],
+  [/\bv[áa]lvula\s+pedal\b/gi, 'Foot Brake Valve'],
+  [/\bv[áa]lvula\b/gi, 'Valve'],
+  [/\btambor\s+de\s+freio\b/gi, 'Brake Drum'],
+  [/\bdisco\s+de\s+freio\b/gi, 'Brake Disc'],
+  [/\bpastilha\s+de\s+freio\b/gi, 'Brake Pad Set'],
+  [/\blona\s+de\s+freio\b/gi, 'Brake Lining'],
+  [/\bcatraca\s+de\s+freio\s+autom[áa]tica\b/gi, 'Automatic Brake Slack Adjuster'],
+  [/\bcatraca\s+de\s+freio\b/gi, 'Brake Slack Adjuster'],
+  [/\bcompressor\s+de\s+ar\b/gi, 'Air Compressor'],
+  [/\bsecador\s+de\s+ar\b/gi, 'Air Dryer / APU'],
+
+  // Direção e rodagem
+  [/\bcubo\s+de\s+roda\b/gi, 'Wheel Hub'],
+  [/\brolamento\s+de\s+roda\b/gi, 'Wheel Bearing'],
+  [/\bterminal\s+de\s+dire[çc][ãa]o\b/gi, 'Tie Rod End'],
+  [/\bbarra\s+de\s+liga[çc][ãa]o\b/gi, 'Drag Link / Tie Rod'],
+  [/\bretentor\b/gi, 'Oil Seal'],
+  [/\bjunta\b/gi, 'Gasket'],
+  [/\banel\s+de\s+veda[çc][ãa]o\b/gi, 'O-Ring / Sealing Ring']
+];
+
+function translateComponentTitleToEn(title, brand = '') {
+  if (!title) return 'AUTOMOTIVE COMPONENT';
+  let t = title.trim();
+  for (const [pattern, replacement] of COMPONENT_TRANSLATIONS) {
+    t = t.replace(pattern, replacement);
+  }
+  if (brand && t.toLowerCase().includes(brand.toLowerCase())) {
+    const brandRegex = new RegExp(`\\b${brand}\\b`, 'gi');
+    t = t.replace(brandRegex, '').replace(/\s+/g, ' ').trim();
+    return `${brand.toUpperCase()} ${t.toUpperCase()}`;
+  }
+  return t.toUpperCase();
+}
+
+function translateDimensionKeywords(dimStr) {
+  if (!dimStr) return dimStr;
+  let s = String(dimStr);
+  s = s.replace(/\bbitola\s*:/gi, 'Width × Thickness:')
+       .replace(/\bcomprimento\s*:/gi, 'Length:')
+       .replace(/\baltura\s*:/gi, 'Height:')
+       .replace(/\blargura\s*:/gi, 'Width:')
+       .replace(/\bespessura\s*:/gi, 'Thickness:')
+       .replace(/\bdi[âa]metro\s*:/gi, 'Diameter:')
+       .replace(/\bfuro\s+central\s*:/gi, 'Center hole:')
+       .replace(/\bapoios\s*:/gi, 'Support centers:')
+       .replace(/\bdist[âa]ncia\s+entre\s+furos\s*:/gi, 'Hole spacing:');
+  return s;
+}
+
+function translatePackagingTerms(str) {
+  if (!str) return str;
+  let s = String(str);
+  s = s.replace(/\bfeixe\s*:\s*(\d+)\s*l[âa]minas?\b/gi, 'Spring pack: $1 leaves')
+       .replace(/\bfeixe\s+com\s*(\d+)\s*l[âa]minas?\b/gi, 'Spring pack with $1 leaves')
+       .replace(/\bfeixe\s*:\b/gi, 'Spring pack:')
+       .replace(/\bl[âa]minas?\s+(\d+(?:\/\d+)*)\s*:/gi, 'Leaves $1:')
+       .replace(/\bl[âa]minas?\b/gi, 'Leaves')
+       .replace(/\bl[âa]mina\b/gi, 'Leaf')
+       .replace(/\bpontas?\s+chanfradas?\b/gi, 'Beveled ends')
+       .replace(/\bpontas?\s+quadradas?\b/gi, 'Square ends')
+       .replace(/\bsemi[- ]?virada\b/gi, 'Semi-rolled eye')
+       .replace(/\bvirada\b/gi, 'Rolled eye')
+       .replace(/\bcom\s+furo\s+de\s+bra[çc]adeira\b/gi, 'with clamp hole')
+       .replace(/\bcom\s+furo\b/gi, 'with hole')
+       .replace(/\bsemirreboques?\b/gi, 'Semi-trailer')
+       .replace(/\breboques?\b/gi, 'Trailer')
+       .replace(/\bcarretas?\b/gi, 'Trailer')
+       .replace(/\bcom\s+suspens[ãa]o\s+mec[âa]nica\s+e\s+pneum[áa]tica\b/gi, 'with mechanical and pneumatic suspension')
+       .replace(/\bcom\s+suspens[ãa]o\s+pneum[áa]tica\b/gi, 'with pneumatic suspension')
+       .replace(/\bcom\s+suspens[ãa]o\s+mec[âa]nica\b/gi, 'with mechanical suspension')
+       .replace(/\bfabricante\s*:/gi, 'Manufacturer:')
+       .replace(/\b e \b/g, ' and ');
+  return s;
 }
 
 function parseExternalResearch(text) {
@@ -356,11 +521,18 @@ function buildPrompt(data) {
 DIRETRIZES TÉCNICAS MANDATÓRIAS DE ENGENHARIA:
 1. Gere simultaneamente os dados para "pt_BR" (em português técnico formal brasileiro) e "en_US" (em inglês técnico automotivo internacional formal).
 2. PRIORIDADE MANDATÓRIA PARA DADOS DE PESQUISA: É ESTRITAMENTE MANDATÓRIO incorporar todas as informações fornecidas em DADOS COLETADOS EM PESQUISA. Extraia marcas de fabricantes (Firestone, Contitech, Suspentech, Bosch, Knorr, Wabco, Facchini, etc.), códigos de equivalência/referências cruzadas, dimensões, roscas e aplicações complementares (carretas, implementos, outros veículos). Preencha o campo 'referencias_cruzadas' com todos os códigos cruzados e equivalências. NUNCA declare 'Não localizado' se a informação constar no texto de pesquisa.
-3. Quando um dado específico não for determinável e NÃO existir na pesquisa:
+3. OBRIGATORIEDADE DE TRADUÇÃO COMPLETA EM en_US:
+   A versão "en_US" DEVE SER 100% EM INGLÊS TÉCNICO INTERNACIONAL, SEM NENHUMA PALAVRA EM PORTUGUÊS:
+   - 'categoria_eyebrow' deve estar em inglês (ex: 'RANDON • SUSPENSION SYSTEM', 'SCANIA • BRAKE & COMPRESSED AIR SYSTEM').
+   - 'componente_titulo' deve estar em inglês (ex: 'RANDON PARABOLIC MAIN LEAF SPRING', 'AIR SPRING ASSEMBLY', 'BRAKE CHAMBER').
+   - 'funcao_tecnica' deve estar em inglês e NÃO conter termos em português (ex: 'engineered for operation within the suspension system' e JAMAIS 'within the sistema de suspensão system').
+   - Em 'especificacoes', todas as dimensões, materiais, embalagens, lâminas e notas devem estar em inglês (ex: 'Width × Thickness: 90 × 10 mm • Length: 725 × 565 mm', 'Spring pack: 11 leaves • Leaves 1/2/3:', 'Square ends / Beveled ends').
+   - Em pt_BR, nunca repita a palavra "sistema" em 'funcao_tecnica' (ex: "no sistema de suspensão" e JAMAIS "no sistema sistema de suspensão").
+4. Quando um dado específico não for determinável e NÃO existir na pesquisa:
    - Em pt_BR, declare: "Não localizado em fonte técnica específica para esta referência."
    - Em en_US, declare: "Not located in specific technical sources for this reference."
-4. Em "aplicacao_detalhada", integre os modelos da montadora com quaisquer implementos/carretas da pesquisa e inclua aviso de validação por VIN/chassi.
-5. Formule 2 alertas de cotação focados em riscos de compra (exigência de fotos da gravação/etiqueta, confirmação de conectores, voltagem, calibração eletrônica).
+5. Em "aplicacao_detalhada", integre os modelos da montadora com quaisquer implementos/carretas da pesquisa e inclua aviso de validação por VIN/chassi.
+6. Formule 2 alertas de cotação focados em riscos de compra (exigência de fotos da gravação/etiqueta, confirmação de conectores, voltagem, calibração eletrônica).
 
 Gere rigorosamente um JSON com esta estrutura exata:
 {
@@ -395,9 +567,9 @@ Gere rigorosamente um JSON com esta estrutura exata:
     "destaque_conferencia": "Localizar a posição indicada no diagrama integral e cotejar com a linha do part number. Componentes vizinhos e kits de fixação são vendidos separadamente."
   },
   "en_US": {
-    "categoria_eyebrow": "SYSTEM IN UPPERCASE (e.g. PNEUMATIC SUSPENSION SYSTEM)",
-    "componente_titulo": "COMPONENT NAME IN UPPERCASE (e.g. AIR SPRING ASSEMBLY)",
-    "funcao_tecnica": "Concise 1-sentence technical description of the component function.",
+    "categoria_eyebrow": "SYSTEM IN UPPERCASE (e.g. SUSPENSION SYSTEM, BRAKE & COMPRESSED AIR SYSTEM)",
+    "componente_titulo": "COMPONENT NAME IN UPPERCASE (e.g. PARABOLIC MAIN LEAF SPRING, AIR SPRING ASSEMBLY)",
+    "funcao_tecnica": "Concise 1-sentence technical description of the component function in English (e.g. engineered for operation within the suspension system).",
     "aplicacao_detalhada": "Technical summary of associated vehicle models, engines or implements with VIN validation requirement.",
     "referencias_cruzadas": "Cross-reference codes from other manufacturers and equivalents (e.g. Firestone: 095.0595 / 1T19F-14 • Facchini: 308501719 • Contitech: 9 10-19 A 953). If none, 'Not located in specific technical sources for this reference.'",
     "alertas_cotacao": [
@@ -408,12 +580,12 @@ Gere rigorosamente um JSON com esta estrutura exata:
       "posicao_montagem": "Typical mounting position or according to catalog.",
       "tensao": "Nominal voltage (e.g. 24V DC or 'Not applicable / Mechanical')",
       "material": "Predominant material (e.g. Heavy-duty rubber bellows with steel bead plates)",
-      "dimensoes": "Approximate physical dimensions if known from research, otherwise 'Not located in specific technical sources for this reference.'",
+      "dimensoes": "Approximate physical dimensions translated to English (e.g. Width × Thickness: 90 × 10 mm • Length: 725 × 565 mm), otherwise 'Not located in specific technical sources for this reference.'",
       "peso": "Approximate net weight if known, otherwise 'Not located in specific technical sources for this reference.'",
       "conexoes": "Pneumatic/hydraulic ports (M... threads) or electrical connector pinout.",
-      "codigo_fabricante": "Component manufacturer part number (Firestone, Contitech, Suspentech, Bosch, Knorr, Wabco, etc. as researched).",
+      "codigo_fabricante": "Component manufacturer part number and leaf pack specs (e.g. Spring pack: 11 leaves | Leaves 1/2/3:).",
       "conteudo_kit": "Not supplied as kit; quote primary part number only (or detail if assembly).",
-      "observacoes_tecnicas": "Essential technical notes, recommended tightening torques, sealing, and compatibility."
+      "observacoes_tecnicas": "Essential technical notes, recommended tightening torques, sealing, and compatibility in English."
     },
     "checklist_visual": [
       "Clear photograph of label or stamped OEM part number.",
@@ -433,20 +605,34 @@ Gere rigorosamente um JSON com esta estrutura exata:
 function generateFallback(data) {
   const brand = (data.brand || 'MONTADORA').toUpperCase();
   const pn = data.part_number || 'OEM';
-  const title = (data.title || 'COMPONENTE TÉCNICO').toUpperCase();
-  const category = (data.category || 'SISTEMAS VEICULARES').toUpperCase();
+  const rawTitle = data.title || 'COMPONENTE TÉCNICO';
+  const rawCategory = data.category || 'SISTEMAS VEICULARES';
 
   const extParsed = parseExternalResearch(data.external_research);
   const naTextPt = 'Não localizado em fonte técnica específica para esta referência.';
   const naTextEn = 'Not located in specific technical sources for this reference.';
+
+  // Higieniza categoria pt_BR para evitar "no sistema sistema de..."
+  const cleanCatPt = rawCategory.replace(/^sistema\s+(de\s+)?/i, '').trim();
+  const titlePt = rawTitle.toUpperCase();
+  const eyebrowPt = `${brand} • ${rawCategory.toUpperCase()}`;
+
+  // Tradução determinística para en_US
+  const enCategory = translateCategoryToEn(rawCategory);
+  const enTitle = translateComponentTitleToEn(rawTitle, brand);
+  const eyebrowEn = `${brand} • ${enCategory}`;
+
+  const enDims = translatePackagingTerms(translateDimensionKeywords(extParsed.dimensionsStr));
+  const enRefs = translatePackagingTerms(translateDimensionKeywords(extParsed.crossRefsStr));
+  const enMfg = translatePackagingTerms(translateDimensionKeywords(extParsed.mfgCodesStr || extParsed.crossRefsStr));
 
   const appPt = data.application
     ? (extParsed.applicationStr ? `${data.application} • Aplicação de mercado / implemento: ${extParsed.applicationStr}` : data.application)
     : (extParsed.applicationStr ? `Aplicação de mercado / implemento: ${extParsed.applicationStr}. Validar por VIN/chassi.` : `Aplicável a veículos comerciais e pesados ${brand}. A compatibilidade final deve ser validada obrigatoriamente através do número de chassi (VIN).`);
 
   const appEn = data.application
-    ? (extParsed.applicationStr ? `${data.application} • Market / implement application: ${extParsed.applicationStr}` : data.application)
-    : (extParsed.applicationStr ? `Market / implement application: ${extParsed.applicationStr}. Validate via VIN/chassis.` : `Applicable to ${brand} commercial and heavy-duty vehicles. Final fitment must be validated via vehicle identification number (VIN).`);
+    ? (extParsed.applicationStr ? `${data.application} • Market / implement application: ${translatePackagingTerms(translateDimensionKeywords(extParsed.applicationStr))}` : data.application)
+    : (extParsed.applicationStr ? `Market / implement application: ${translatePackagingTerms(translateDimensionKeywords(extParsed.applicationStr))}. Validate via VIN/chassis.` : `Applicable to ${brand} commercial and heavy-duty vehicles. Final fitment must be validated via vehicle identification number (VIN).`);
 
   const alertasPt = [
     `**Cotar exclusivamente o part number ${pn} indicado. Exigir fotografia da etiqueta, gravação ou embalagem original e confirmar aplicação pelo VIN antes do embarque.**`
@@ -459,16 +645,16 @@ function generateFallback(data) {
   const alertasEn = [
     `**Quote strictly the specified part number ${pn}. Require clear photograph of label, stamped code, or OEM packaging and verify application by VIN prior to shipment.**`
   ];
-  if (extParsed.crossRefsStr) {
-    alertasEn.push(`🔄 **Cross references & market codes:** ${extParsed.crossRefsStr}.`);
+  if (enRefs) {
+    alertasEn.push(`🔄 **Cross references & market codes:** ${enRefs}.`);
   }
   alertasEn.push('Confirm technical specifications, electrical connectors, mechanical mountings, and dimensional compatibility prior to procurement approval.');
 
   return {
     pt_BR: {
-      categoria_eyebrow: `${brand} • ${category}`,
-      componente_titulo: title,
-      funcao_tecnica: `Componente técnico original destinado à aplicação e funcionamento no sistema ${category.toLowerCase()}.`,
+      categoria_eyebrow: eyebrowPt,
+      componente_titulo: titlePt,
+      funcao_tecnica: `Componente técnico original destinado à aplicação e funcionamento no sistema de ${cleanCatPt.toLowerCase()}.`,
       aplicacao_detalhada: appPt,
       referencias_cruzadas: extParsed.crossRefsStr || naTextPt,
       alertas_cotacao: alertasPt,
@@ -494,21 +680,21 @@ function generateFallback(data) {
       destaque_conferencia: `Localizar a posição indicada no diagrama e cotejar com o part number ${pn}. Itens vizinhos são vendidos separadamente.`
     },
     en_US: {
-      categoria_eyebrow: `${brand} • ${category}`,
-      componente_titulo: title,
-      funcao_tecnica: `Original technical component engineered for operation within the ${category.toLowerCase()} system.`,
+      categoria_eyebrow: eyebrowEn,
+      componente_titulo: enTitle,
+      funcao_tecnica: `Original technical component engineered for operation within the ${enCategory.toLowerCase()}.`,
       aplicacao_detalhada: appEn,
-      referencias_cruzadas: extParsed.crossRefsStr || naTextEn,
+      referencias_cruzadas: enRefs || naTextEn,
       alertas_cotacao: alertasEn,
       especificacoes: {
         posicao_montagem: data.position ? `Position ${data.position} according to assembly catalog.` : 'Mounting according to OEM technical layout.',
         tensao: naTextEn,
         material: 'Heavy-duty housing specified for severe operating environments.',
-        dimensoes: extParsed.dimensionsStr || naTextEn,
+        dimensoes: enDims || naTextEn,
         peso: naTextEn,
         conexoes: 'Standardized connections compliant with OEM automotive standards.',
-        codigo_fabricante: extParsed.mfgCodesStr || extParsed.crossRefsStr || naTextEn,
-        referencias_cruzadas: extParsed.crossRefsStr || naTextEn,
+        codigo_fabricante: enMfg || enRefs || naTextEn,
+        referencias_cruzadas: enRefs || naTextEn,
         conteudo_kit: 'Not supplied as kit; quote primary part number only.',
         observacoes_tecnicas: data.company_notes ? `Client requirement: ${data.company_notes}` : 'Follow assembly standards and torque specifications provided in OEM service manuals.'
       },
@@ -732,15 +918,143 @@ function assembleSingleDocument(reqData, aiData, lang = 'pt_BR') {
   };
 }
 
+function sanitizeEnglishDocument(doc, brand = '') {
+  if (!doc) return doc;
+  const brandUpper = (brand || doc.header?.brand || 'OEM').toUpperCase();
+
+  // Page 1 eyebrow
+  if (doc.page1?.eyebrow) {
+    const parts = doc.page1.eyebrow.split('•');
+    if (parts.length >= 2) {
+      const b = parts[0].trim();
+      const cat = parts.slice(1).join('•').trim();
+      doc.page1.eyebrow = `${b} • ${translateCategoryToEn(cat)}`;
+    } else {
+      const catEn = translateCategoryToEn(doc.page1.eyebrow);
+      doc.page1.eyebrow = brandUpper ? `${brandUpper} • ${catEn}` : catEn;
+    }
+  }
+
+  // Page 1 title
+  if (doc.page1?.title) {
+    doc.page1.title = translateComponentTitleToEn(doc.page1.title, brandUpper);
+  }
+
+  // Page 1 callouts
+  if (Array.isArray(doc.page1?.callouts)) {
+    doc.page1.callouts = doc.page1.callouts.map(c => {
+      let t = translatePackagingTerms(translateDimensionKeywords(c));
+      t = t.replace(/\bRefer[êe]ncias?\s+cruzadas?\s*&\s*c[óo]digos?\s+de\s+mercado\b/gi, 'Cross References & Market Codes')
+           .replace(/\bCotar\s+exclusivamente\s+o\s+part\s+number\b/gi, 'Quote strictly the specified part number')
+           .replace(/\bExigir\s+fotografia\s+da\s+etiqueta\b/gi, 'Require photograph of label')
+           .replace(/\bConfirmar\s+especifica[çc][ãa]o\s+t[ée]cnica\b/gi, 'Confirm technical specifications');
+      return t;
+    });
+  }
+
+  // Page 1 application
+  if (doc.page1?.application) {
+    let app = doc.page1.application;
+    app = app.replace(/\bAplica[çc][ãa]o\s+de\s+mercado\s*\/\s*implemento\s*:/gi, 'Market / implement application:')
+             .replace(/\bValidar\s+por\s+VIN\/chassi\b/gi, 'Validate via VIN/chassis')
+             .replace(/\bValidar\s+com\s+chassi\/VIN\b/gi, 'Validate via chassis/VIN')
+             .replace(/\bAplica[çc][ãa]o\s+em\s+ve[íi]culos\s+comerciais\b/gi, 'Application in commercial vehicles')
+             .replace(/\bA\s+compatibilidade\s+final\s+deve\s+ser\s+validada\b/gi, 'Final compatibility must be validated');
+    doc.page1.application = translatePackagingTerms(translateDimensionKeywords(app));
+  }
+
+  // Page 2 specs
+  if (Array.isArray(doc.page2?.specs)) {
+    for (const spec of doc.page2.specs) {
+      if (spec.label === 'Component' || spec.label === 'Formal Technical Description') {
+        spec.value = translateComponentTitleToEn(spec.value, brandUpper);
+      } else if (spec.label === 'Function') {
+        let fn = spec.value;
+        fn = fn.replace(/\bsistema\s+de\s+suspens[ãa]o\s+system\b/gi, 'suspension system')
+               .replace(/\bsistema\s+de\s+suspens[ãa]o\b/gi, 'suspension system')
+               .replace(/\bsistema\s+de\s+freios?\b/gi, 'brake system')
+               .replace(/\bsistema\s+pneum[áa]tico\b/gi, 'pneumatic system')
+               .replace(/\bsistema\s+de\s+dire[çc][ãa]o\b/gi, 'steering system');
+        if (/^componente\s+t[ée]cnico\s+original\s+destinado/i.test(fn)) {
+          fn = fn.replace(/^componente\s+t[ée]cnico\s+original\s+destinado\s+[àa]\s+aplica[çc][ãa]o\s+e\s+funcionamento\s+no\s+sistema\s+(?:de\s+)?/i, 'Original technical component engineered for operation within the ')
+                 .replace(/\.$/, '') + ' system.';
+        }
+        spec.value = fn;
+      } else if (spec.label === 'Dimensions' || spec.label === 'Component Manufacturer Code' || spec.label === 'Cross References & Equivalents') {
+        spec.value = translatePackagingTerms(translateDimensionKeywords(spec.value));
+      } else if (spec.label === 'Kit Content') {
+        if (/n[ãa]o\s+tratado\s+como\s+kit/i.test(spec.value)) {
+          spec.value = 'Not supplied as kit; quote primary part number only.';
+        }
+      } else if (spec.label === 'Mounting Position') {
+        if (/posi[çc][ãa]o\s+(\d+)\s+conforme\s+cat[áa]logo/i.test(spec.value)) {
+          spec.value = spec.value.replace(/posi[çc][ãa]o\s+(\d+)\s+conforme\s+cat[áa]logo\s+de\s+montagem\.?/i, 'Position $1 according to assembly catalog.');
+        } else if (/instala[çc][ãa]o\s+conforme\s+disposi[çc][ãa]o/i.test(spec.value)) {
+          spec.value = 'Mounting according to OEM technical layout.';
+        }
+      } else if (spec.label === 'Material') {
+        if (/carca[çc]a\s+de\s+alta\s+resist[êe]ncia/i.test(spec.value)) {
+          spec.value = 'Heavy-duty housing specified for severe operating environments.';
+        }
+      } else if (spec.label === 'Connections / Ports') {
+        if (/conex[õo]es\s+padronizadas/i.test(spec.value)) {
+          spec.value = 'Standardized connections compliant with OEM automotive standards.';
+        }
+      } else if (spec.label === 'Technical Notes') {
+        if (/seguir\s+as\s+normas\s+de\s+montagem/i.test(spec.value)) {
+          spec.value = 'Follow assembly standards and torque specifications provided in OEM service manuals.';
+        }
+        spec.value = translatePackagingTerms(translateDimensionKeywords(spec.value));
+      } else if (spec.label === 'Application') {
+        let a = spec.value;
+        a = a.replace(/\bAplica[çc][ãa]o\s+de\s+mercado\s*\/\s*implemento\s*:/gi, 'Market / implement application:')
+             .replace(/\bValidar\s+por\s+VIN\/chassi\b/gi, 'Validate via VIN/chassis')
+             .replace(/\bValidar\s+com\s+chassi\/VIN\b/gi, 'Validate via chassis/VIN')
+             .replace(/\bAplica[çc][ãa]o\s+em\s+ve[íi]culos\s+comerciais\b/gi, 'Application in commercial vehicles');
+        spec.value = translatePackagingTerms(translateDimensionKeywords(a));
+      }
+    }
+  }
+
+  // Page 3 highlight
+  if (doc.page3?.highlight_note) {
+    let hn = doc.page3.highlight_note;
+    if (/cotejar\s+o\s+componente\s+recebido/i.test(hn)) {
+      hn = hn.replace(/cotejar\s+o\s+componente\s+recebido\s+com\s+o\s+part\s+number\s+(\S+)\s+e\s+a\s+refer[êe]ncia\s+t[ée]cnica\.\s*Itens\s+vizinhos\s+e\s+conjuntos\s+de\s+fixa[çc][ãa]o\s+n[ãa]o\s+fazem\s+parte\s+desta\s+cota[çc][ãa]o\./i, 'Match received component with primary part number $1 and technical references. Adjacent items and mounting kits are sold separately.');
+    }
+    doc.page3.highlight_note = hn;
+  }
+
+  return doc;
+}
+
+function sanitizePortugueseDocument(doc) {
+  if (!doc) return doc;
+
+  // Corrige erro de duplicidade de "sistema"
+  if (Array.isArray(doc.page2?.specs)) {
+    for (const spec of doc.page2.specs) {
+      if (spec.label === 'Função' && typeof spec.value === 'string') {
+        spec.value = spec.value.replace(/\bno\s+sistema\s+sistema\s+de\b/gi, 'no sistema de')
+                               .replace(/\bno\s+sistema\s+sistema\b/gi, 'no sistema');
+      }
+    }
+  }
+  return doc;
+}
+
 function assembleBilingualDocument(reqData, aiData) {
   // Garante que ambos os lados existam mesmo se a IA tiver falhado parcialmente
   const fallback = generateFallback(reqData);
   const ptData = (aiData && aiData.pt_BR && aiData.pt_BR.funcao_tecnica) ? aiData.pt_BR : fallback.pt_BR;
   const enData = (aiData && aiData.en_US && aiData.en_US.funcao_tecnica) ? aiData.en_US : fallback.en_US;
 
+  const ptDoc = sanitizePortugueseDocument(assembleSingleDocument(reqData, ptData, 'pt_BR'));
+  const enDoc = sanitizeEnglishDocument(assembleSingleDocument(reqData, enData, 'en_US'), reqData.brand);
+
   return {
-    pt_BR: assembleSingleDocument(reqData, ptData, 'pt_BR'),
-    en_US: assembleSingleDocument(reqData, enData, 'en_US')
+    pt_BR: ptDoc,
+    en_US: enDoc
   };
 }
 
