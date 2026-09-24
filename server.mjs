@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 const PORT = parseInt(process.env.PORT || '8098', 10);
 const OLLAMA_BASE_URL = process.env.OLLAMA_URL || 'http://10.88.30.12:11434';
-const DEFAULT_MODEL = 'gemma4:26b';
+const DEFAULT_MODEL = 'gpt-oss:20b';
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
@@ -26,7 +26,7 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon'
 };
 
-// Servidor 10.88.30.12: Dedicado ao Gemma (26B / Alta precisão)
+// Servidor 10.88.30.12: GPU NVIDIA RTX 5060 Ti 16GB (gpt-oss:20b, gemma4:12b-it-qat e modelos de alta precisão)
 const SERVER_12_ENDPOINTS = [
   'http://127.0.0.1:11434', // Túnel local para 10.88.30.12
   'http://10.88.30.12:11434' // Direto em ambiente de rede Proxmox/LXC
@@ -46,10 +46,39 @@ function getEndpointsForModel(modelName) {
   if (name.includes('granite')) {
     return SERVER_11_ENDPOINTS;
   }
-  if (name.includes('gemma')) {
+  if (name.includes('gpt-oss') || name.includes('gemma') || name.includes('qwen')) {
     return SERVER_12_ENDPOINTS;
   }
   return [...SERVER_12_ENDPOINTS, ...SERVER_11_ENDPOINTS];
+}
+
+async function ensureSingleModelOnServer(targetEndpoint, targetModel) {
+  try {
+    const controller = new AbortController();
+    const tId = setTimeout(() => controller.abort(), 3000);
+    const psResp = await fetch(`${targetEndpoint}/api/ps`, { signal: controller.signal });
+    clearTimeout(tId);
+    if (!psResp.ok) return;
+    const psData = await psResp.json();
+    const loadedModels = psData.models || [];
+    for (const m of loadedModels) {
+      const name = m.name || m.model || '';
+      if (name && name !== targetModel && !name.startsWith(targetModel)) {
+        console.log(`[Governança de VRAM] Descarregando modelo anterior '${name}' de ${targetEndpoint} para isolamento do '${targetModel}'...`);
+        const c2 = new AbortController();
+        const t2 = setTimeout(() => c2.abort(), 5000);
+        await fetch(`${targetEndpoint}/api/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: name, keep_alive: 0 }),
+          signal: c2.signal
+        }).catch(() => {});
+        clearTimeout(t2);
+      }
+    }
+  } catch {
+    // Ignora se o endpoint não responder /api/ps
+  }
 }
 
 async function callOllama(prompt, model = DEFAULT_MODEL) {
@@ -85,6 +114,7 @@ async function callOllama(prompt, model = DEFAULT_MODEL) {
 
   const endpoints = getEndpointsForModel(model);
   for (const endpoint of endpoints) {
+    await ensureSingleModelOnServer(endpoint, model || DEFAULT_MODEL);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 200000);
 

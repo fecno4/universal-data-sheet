@@ -11,10 +11,13 @@ Aplicação independente para geração de **DataSheets Técnicos Oficiais de 3 
 - **Geração Simultânea Bilíngue (`pt_BR` e `en_US`):** Em uma única inferência inteligente, a IA sintetiza o documento em português técnico brasileiro formal e em inglês técnico automotivo internacional para exportação global.
 - **Dois PDFs Separados em 1-Clique:** Botões dedicados `🖨️ Salvar PDF (pt-BR)` e `🖨️ Salvar PDF (en-US)` que isolam e imprimem exatamente as 3 páginas A4 da versão escolhida, configurando o nome sugerido do arquivo automaticamente.
 - **Abas de Visualização Rápida:** Alternância instantânea entre as versões `[🇧🇷 Português (pt-BR)]` e `[🇺🇸 English (en-US)]`, preservando edições manuais em ambas.
-- **Motor de IA Local On-Premise Multi-Servidor:**
-  - **Servidor `10.88.30.12` (Porta túnel `127.0.0.1:11434`):** Dedicado ao modelo **`gemma4:26b`** (26B parâmetros) para máxima precisão técnica e redação formal bilíngue.
+- **Motor de IA Local On-Premise Multi-Servidor (Aceleração por GPU):**
+  - **Servidor `10.88.30.12` (GPU NVIDIA RTX 5060 Ti 16GB · Porta túnel `127.0.0.1:11434`):**
+    - **`gpt-oss:20b` (Padrão Recomendado · ~13.8 GB):** Reside 100% na VRAM da GPU. Inferência ultrarrápida com alta capacidade analítica para redação técnica formal bilíngue e especificações de engenharia.
+    - **`gemma4:12b-it-qat` (~7.15 GB):** Reside 100% na VRAM da GPU com capacidade de visão multimodal para inspeção de desenhos técnicos e fotografias.
+    - **`gemma4:26b` / `gemma4:26b-a4b-it-q8_0`:** Modelos de 26B parâmetros disponíveis para auditorias de alta fidelidade técnica.
   - **Servidor `10.88.30.11` (Porta túnel `127.0.0.1:11435`):** Dedicado ao modelo **`granite4:7b-a1b-h`** (MoE com 1B ativo) para síntese ultrarrápida com baixo consumo de memória (~4.3 GB).
-  - **Governança Estrita de RAM:** Carregamento estrito de **1 único modelo por vez por servidor** para evitar esgotamento de memória e travamentos de VRAM.
+  - **Governança Estrita de VRAM/RAM:** Carregamento estrito de **1 único modelo por vez por servidor** gerenciado ativamente via API `/api/ps` e `keep_alive: 0` para prevenir saturação dos 16 GB de VRAM da GPU.
   - **Zero Ollama no Localhost:** O ambiente local do Windows não possui Ollama instalado; as conexões passam pelo túnel SSH automatizado em `run.ps1`.
 - **Upload Duplo de Imagens:**
   - **Página 1:** Foto real da peça física, etiqueta ou embalagem (compartilhada em ambas as versões).
