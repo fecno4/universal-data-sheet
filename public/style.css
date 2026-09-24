@@ -601,6 +601,19 @@ textarea:focus {
   margin-bottom: 6px;
 }
 
+.ds-cross-refs-callout {
+  background: #f0f9ff;
+  border: 1px dashed #0284c7;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  color: #0f172a;
+  margin: 2px 0 6px;
+}
+.ds-cross-refs-callout strong {
+  color: #0369a1;
+}
+
 /* Moldura de Desenho / Foto (Página 1 e Página 3) */
 .ds-drawing-box {
   width: 100%;

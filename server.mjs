@@ -205,6 +205,122 @@ async function callOllama(prompt, model = DEFAULT_MODEL) {
   return null;
 }
 
+function parseExternalResearch(text) {
+  const res = {
+    crossRefsList: [],
+    crossRefsStr: '',
+    mfgCodesStr: '',
+    applicationStr: '',
+    dimensionsStr: '',
+    rawText: (text || '').trim()
+  };
+  if (!text || !text.trim()) return res;
+
+  const raw = text.trim();
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+
+  let currentSection = 'refs';
+  const refsLines = [];
+  const appLines = [];
+  const dimLines = [];
+
+  const headerPatterns = {
+    refs: /^(refer[êe]ncias?|cross[- ]?references?|c[oó]digos?|equival[êe]ncias?):?$/i,
+    app: /^(aplica[çc][ãa]o|applications?|modelos?|ve[íi]culos?):?$/i,
+    dim: /^(dimens[õo]es|especifica[çc][õo]es?|dimens[õo]es\s*\/\s*especifica[çc][õo]es?|dimensions?|specs?):?$/i
+  };
+
+  const knownBrands = [
+    'scania', 'volvo', 'mercedes', 'mercedes-benz', 'iveco', 'daf', 'man', 'volkswagen', 'vw',
+    'firestone', 'contitech', 'conti', 'suspentech', 'facchini', 'randon', 'guerra', 'noma',
+    'knorr', 'knorr-bremse', 'wabco', 'bosch', 'zf', 'sachs', 'mahle', 'hengst', 'mann', 'mann-filter',
+    'parker', 'donaldson', 'meritor', 'dana', 'spicer', 'eaton', 'skf', 'fag', 'timken', 'trw',
+    'lemförder', 'hella', 'valeo', 'delphi', 'cummins', 'goodyear', 'joost', 'master', 'suspensys'
+  ];
+  const brandRegex = new RegExp(`\\b(${knownBrands.join('|')})\\b`, 'i');
+
+  for (const line of lines) {
+    let matchedHeader = false;
+    for (const [sec, pat] of Object.entries(headerPatterns)) {
+      if (pat.test(line)) {
+        currentSection = sec;
+        matchedHeader = true;
+        break;
+      }
+    }
+    if (matchedHeader) continue;
+
+    const mInlineApp = line.match(/^(aplica[çc][ãa]o|applications?|modelos?):\s*(.+)$/i);
+    if (mInlineApp) {
+      appLines.push(mInlineApp[2].trim());
+      currentSection = 'app';
+      continue;
+    }
+
+    const mInlineDim = line.match(/^(dimens[õo]es|especifica[çc][õo]es?|dimens[õo]es\s*\/\s*especifica[çc][õo]es?|dimensions?):\s*(.+)$/i);
+    if (mInlineDim) {
+      dimLines.push(mInlineDim[2].trim());
+      currentSection = 'dim';
+      continue;
+    }
+
+    const mInlineRef = line.match(/^(refer[êe]ncias?|cross[- ]?references?|equival[êe]ncias?):\s*(.+)$/i);
+    if (mInlineRef) {
+      refsLines.push(mInlineRef[2].trim());
+      currentSection = 'refs';
+      continue;
+    }
+
+    if (currentSection === 'refs') {
+      if (/\b(carreta|reboque|semirreboque|vanderleia|chassi|caminh[ãa]o|ônibus)\b/i.test(line) && !/[:\d{4,}]/.test(line)) {
+        appLines.push(line);
+      } else if (/\b(\d+\s*mm|m\d+x|rosca|diâmetro|fole de ar)\b/i.test(line) && !brandRegex.test(line)) {
+        dimLines.push(line);
+      } else {
+        refsLines.push(line);
+      }
+    } else if (currentSection === 'app') {
+      if (brandRegex.test(line) && (line.includes(':') || /\d{3,}/.test(line))) {
+        refsLines.push(line);
+      } else if (/\b(\d+\s*mm|m\d+x|rosca|diâmetro)\b/i.test(line)) {
+        dimLines.push(line);
+      } else {
+        appLines.push(line);
+      }
+    } else if (currentSection === 'dim') {
+      if (brandRegex.test(line) && (line.includes(':') || /\d{3,}/.test(line))) {
+        refsLines.push(line);
+      } else {
+        dimLines.push(line);
+      }
+    }
+  }
+
+  const cleanRefs = [];
+  const mfgCodes = [];
+  for (const r of refsLines) {
+    const rClean = r.trim();
+    if (rClean && !cleanRefs.includes(rClean)) {
+      cleanRefs.push(rClean);
+      if (!/^scania\b/i.test(rClean)) {
+        mfgCodes.push(rClean);
+      }
+    }
+  }
+
+  if (cleanRefs.length === 0 && appLines.length === 0 && dimLines.length === 0 && raw) {
+    cleanRefs.push(raw);
+    mfgCodes.push(raw);
+  }
+
+  res.crossRefsList = cleanRefs;
+  res.crossRefsStr = cleanRefs.join(' • ');
+  res.mfgCodesStr = mfgCodes.join(' | ') || res.crossRefsStr;
+  res.applicationStr = appLines.join(' • ');
+  res.dimensionsStr = dimLines.join(' • ');
+  return res;
+}
+
 function buildPrompt(data) {
   const brand = data.brand || 'Fabricante OEM';
   const pn = data.part_number || 'Não informado';
@@ -230,7 +346,7 @@ function buildPrompt(data) {
     promptLines.push(`- Aplicação / Modelos informados: ${application}`);
   }
   if (externalResearch) {
-    promptLines.push(`- DADOS COLETADOS EM PESQUISA (FABRICANTE, INTERNET, FORNECEDORES):\n${externalResearch}`);
+    promptLines.push(`- DADOS COLETADOS EM PESQUISA (FABRICANTE, INTERNET, FORNECEDORES, AFTERMARKET):\n${externalResearch}`);
   }
   if (companyNotes) {
     promptLines.push(`- REQUISITOS E OBSERVAÇÕES DE COTAÇÃO DA EMPRESA:\n${companyNotes}`);
@@ -239,20 +355,21 @@ function buildPrompt(data) {
   promptLines.push(`
 DIRETRIZES TÉCNICAS MANDATÓRIAS DE ENGENHARIA:
 1. Gere simultaneamente os dados para "pt_BR" (em português técnico formal brasileiro) e "en_US" (em inglês técnico automotivo internacional formal).
-2. Analise profundamente o texto de pesquisa fornecido para extrair dados concretos de dimensões, peso, tensão elétrica, conexões, materiais e códigos de cross-reference (Bosch, Knorr, Wabco, ZF, etc.).
-3. NUNCA invente medidas ou dados que não existam na pesquisa; quando um dado não for determinável:
+2. PRIORIDADE MANDATÓRIA PARA DADOS DE PESQUISA: É ESTRITAMENTE MANDATÓRIO incorporar todas as informações fornecidas em DADOS COLETADOS EM PESQUISA. Extraia marcas de fabricantes (Firestone, Contitech, Suspentech, Bosch, Knorr, Wabco, Facchini, etc.), códigos de equivalência/referências cruzadas, dimensões, roscas e aplicações complementares (carretas, implementos, outros veículos). Preencha o campo 'referencias_cruzadas' com todos os códigos cruzados e equivalências. NUNCA declare 'Não localizado' se a informação constar no texto de pesquisa.
+3. Quando um dado específico não for determinável e NÃO existir na pesquisa:
    - Em pt_BR, declare: "Não localizado em fonte técnica específica para esta referência."
    - Em en_US, declare: "Not located in specific technical sources for this reference."
-4. Em "aplicacao_detalhada", resuma com precisão os modelos e motores com aviso de validação por VIN/chassi.
+4. Em "aplicacao_detalhada", integre os modelos da montadora com quaisquer implementos/carretas da pesquisa e inclua aviso de validação por VIN/chassi.
 5. Formule 2 alertas de cotação focados em riscos de compra (exigência de fotos da gravação/etiqueta, confirmação de conectores, voltagem, calibração eletrônica).
 
 Gere rigorosamente um JSON com esta estrutura exata:
 {
   "pt_BR": {
-    "categoria_eyebrow": "SISTEMA EM MAIÚSCULAS (ex: SISTEMA PNEUMÁTICO DE FREIOS)",
-    "componente_titulo": "NOME DO COMPONENTE EM MAIÚSCULAS (ex: VÁLVULA REGULADORA DE PRESSÃO APU)",
+    "categoria_eyebrow": "SISTEMA EM MAIÚSCULAS (ex: SISTEMA PNEUMÁTICO DE SUSPENSÃO)",
+    "componente_titulo": "NOME DO COMPONENTE EM MAIÚSCULAS (ex: MOLA PNEUMÁTICA COMPLETA)",
     "funcao_tecnica": "Descrição em 1 frase concisa e exata sobre a função técnica do componente.",
     "aplicacao_detalhada": "Resumo técnico de modelos e motores associados com recomendação de confirmação por chassi/VIN.",
+    "referencias_cruzadas": "Códigos equivalentes de outros fabricantes e montadoras (ex: Firestone: 095.0595 / 1T19F-14 • Facchini: 308501719 • Contitech: 9 10-19 A 953 • Suspentech: ST144). Se não houver, 'Não localizado em fonte técnica específica para esta referência.'",
     "alertas_cotacao": [
       "**Alerta 1 em negrito sobre exigência de foto, código gravado e conferência de chassi antes do embarque.**",
       "Alerta 2 sobre especificações críticas (tensão, roscas, conectores ou calibração)."
@@ -260,12 +377,12 @@ Gere rigorosamente um JSON com esta estrutura exata:
     "especificacoes": {
       "posicao_montagem": "Posição física típica no chassi/veículo ou conforme catálogo.",
       "tensao": "Tensão elétrica nominal (ex: 24V DC ou 'Não se aplica / Mecânico')",
-      "material": "Material predominante (ex: Carcaça em liga de alumínio fundido)",
-      "dimensoes": "Dimensões físicas aproximadas se conhecidas, senão 'Não localizado em fonte técnica específica para esta referência.'",
+      "material": "Material predominante (ex: Fole de borracha com base e prato em aço)",
+      "dimensoes": "Dimensões físicas aproximadas conforme pesquisa ou 'Não localizado em fonte técnica específica para esta referência.'",
       "peso": "Peso líquido aproximado se conhecido, senão 'Não localizado em fonte técnica específica para esta referência.'",
       "conexoes": "Portas hidráulicas, pneumáticas (roscas M...) ou pinagem de conectores elétricos.",
-      "codigo_fabricante": "Código comercial do fabricante da peça (Bosch, Knorr, Wabco, Sachs, etc.).",
-      "conteudo_kit": "Não tratado como kit; cotar somente o código principal (ou detalhar se for conjunto).",
+      "codigo_fabricante": "Código comercial do fabricante da peça (Firestone, Contitech, Suspentech, Bosch, Knorr, Wabco, etc. conforme pesquisa).",
+      "conteudo_kit": "Não tratado como kit; cotar somente o código principal (ou detalhar se for conjunto completo).",
       "observacoes_tecnicas": "Notas técnicas essenciais de instalação, torques recomendados, vedação e compatibilidade."
     },
     "checklist_visual": [
@@ -278,10 +395,11 @@ Gere rigorosamente um JSON com esta estrutura exata:
     "destaque_conferencia": "Localizar a posição indicada no diagrama integral e cotejar com a linha do part number. Componentes vizinhos e kits de fixação são vendidos separadamente."
   },
   "en_US": {
-    "categoria_eyebrow": "SYSTEM IN UPPERCASE (e.g. PNEUMATIC BRAKE & AIR TREATMENT SYSTEM)",
-    "componente_titulo": "COMPONENT NAME IN UPPERCASE (e.g. AIR PROCESSING UNIT (APU) DRYER VALVE)",
+    "categoria_eyebrow": "SYSTEM IN UPPERCASE (e.g. PNEUMATIC SUSPENSION SYSTEM)",
+    "componente_titulo": "COMPONENT NAME IN UPPERCASE (e.g. AIR SPRING ASSEMBLY)",
     "funcao_tecnica": "Concise 1-sentence technical description of the component function.",
-    "aplicacao_detalhada": "Technical summary of associated vehicle models and engines with VIN validation requirement.",
+    "aplicacao_detalhada": "Technical summary of associated vehicle models, engines or implements with VIN validation requirement.",
+    "referencias_cruzadas": "Cross-reference codes from other manufacturers and equivalents (e.g. Firestone: 095.0595 / 1T19F-14 • Facchini: 308501719 • Contitech: 9 10-19 A 953). If none, 'Not located in specific technical sources for this reference.'",
     "alertas_cotacao": [
       "**Alert 1 in bold regarding photo requirement, stamped part number, and VIN check before shipment.**",
       "Alert 2 regarding critical specifications (voltage, thread sizes, connector pins, or calibration)."
@@ -289,11 +407,11 @@ Gere rigorosamente um JSON com esta estrutura exata:
     "especificacoes": {
       "posicao_montagem": "Typical mounting position or according to catalog.",
       "tensao": "Nominal voltage (e.g. 24V DC or 'Not applicable / Mechanical')",
-      "material": "Predominant material (e.g. Cast aluminum alloy housing)",
-      "dimensoes": "Approximate physical dimensions if known, otherwise 'Not located in specific technical sources for this reference.'",
+      "material": "Predominant material (e.g. Heavy-duty rubber bellows with steel bead plates)",
+      "dimensoes": "Approximate physical dimensions if known from research, otherwise 'Not located in specific technical sources for this reference.'",
       "peso": "Approximate net weight if known, otherwise 'Not located in specific technical sources for this reference.'",
       "conexoes": "Pneumatic/hydraulic ports (M... threads) or electrical connector pinout.",
-      "codigo_fabricante": "Component manufacturer part number (Bosch, Knorr, Wabco, Sachs, etc.).",
+      "codigo_fabricante": "Component manufacturer part number (Firestone, Contitech, Suspentech, Bosch, Knorr, Wabco, etc. as researched).",
       "conteudo_kit": "Not supplied as kit; quote primary part number only (or detail if assembly).",
       "observacoes_tecnicas": "Essential technical notes, recommended tightening torques, sealing, and compatibility."
     },
@@ -318,24 +436,51 @@ function generateFallback(data) {
   const title = (data.title || 'COMPONENTE TÉCNICO').toUpperCase();
   const category = (data.category || 'SISTEMAS VEICULARES').toUpperCase();
 
+  const extParsed = parseExternalResearch(data.external_research);
+  const naTextPt = 'Não localizado em fonte técnica específica para esta referência.';
+  const naTextEn = 'Not located in specific technical sources for this reference.';
+
+  const appPt = data.application
+    ? (extParsed.applicationStr ? `${data.application} • Aplicação de mercado / implemento: ${extParsed.applicationStr}` : data.application)
+    : (extParsed.applicationStr ? `Aplicação de mercado / implemento: ${extParsed.applicationStr}. Validar por VIN/chassi.` : `Aplicável a veículos comerciais e pesados ${brand}. A compatibilidade final deve ser validada obrigatoriamente através do número de chassi (VIN).`);
+
+  const appEn = data.application
+    ? (extParsed.applicationStr ? `${data.application} • Market / implement application: ${extParsed.applicationStr}` : data.application)
+    : (extParsed.applicationStr ? `Market / implement application: ${extParsed.applicationStr}. Validate via VIN/chassis.` : `Applicable to ${brand} commercial and heavy-duty vehicles. Final fitment must be validated via vehicle identification number (VIN).`);
+
+  const alertasPt = [
+    `**Cotar exclusivamente o part number ${pn} indicado. Exigir fotografia da etiqueta, gravação ou embalagem original e confirmar aplicação pelo VIN antes do embarque.**`
+  ];
+  if (extParsed.crossRefsStr) {
+    alertasPt.push(`🔄 **Referências cruzadas & códigos de mercado:** ${extParsed.crossRefsStr}.`);
+  }
+  alertasPt.push('Confirmar especificação técnica, conectores, fixações mecânicas e compatibilidade dimensional antes da aprovação da compra.');
+
+  const alertasEn = [
+    `**Quote strictly the specified part number ${pn}. Require clear photograph of label, stamped code, or OEM packaging and verify application by VIN prior to shipment.**`
+  ];
+  if (extParsed.crossRefsStr) {
+    alertasEn.push(`🔄 **Cross references & market codes:** ${extParsed.crossRefsStr}.`);
+  }
+  alertasEn.push('Confirm technical specifications, electrical connectors, mechanical mountings, and dimensional compatibility prior to procurement approval.');
+
   return {
     pt_BR: {
       categoria_eyebrow: `${brand} • ${category}`,
       componente_titulo: title,
       funcao_tecnica: `Componente técnico original destinado à aplicação e funcionamento no sistema ${category.toLowerCase()}.`,
-      aplicacao_detalhada: data.application || `Aplicável a veículos comerciais e pesados ${brand}. A compatibilidade final deve ser validada obrigatoriamente através do número de chassi (VIN).`,
-      alertas_cotacao: [
-        `**Cotar exclusivamente o part number ${pn} indicado. Exigir fotografia da etiqueta, gravação ou embalagem original e confirmar aplicação pelo VIN antes do embarque.**`,
-        `Confirmar especificação técnica, conectores, fixações mecânicas e compatibilidade dimensional antes da aprovação da compra.`
-      ],
+      aplicacao_detalhada: appPt,
+      referencias_cruzadas: extParsed.crossRefsStr || naTextPt,
+      alertas_cotacao: alertasPt,
       especificacoes: {
         posicao_montagem: data.position ? `Posição ${data.position} conforme catálogo de montagem.` : 'Instalação conforme disposição técnica do fabricante.',
-        tensao: 'Não localizado em fonte técnica específica para esta referência.',
+        tensao: naTextPt,
         material: 'Carcaça de alta resistência com especificação para ambiente severo.',
-        dimensoes: 'Não localizado em fonte técnica específica para esta referência.',
-        peso: 'Não localizado em fonte técnica específica para esta referência.',
+        dimensoes: extParsed.dimensionsStr || naTextPt,
+        peso: naTextPt,
         conexoes: 'Conexões padronizadas conforme norma automotiva da montadora.',
-        codigo_fabricante: 'Não localizado em fonte técnica específica para esta referência.',
+        codigo_fabricante: extParsed.mfgCodesStr || extParsed.crossRefsStr || naTextPt,
+        referencias_cruzadas: extParsed.crossRefsStr || naTextPt,
         conteudo_kit: 'Não tratado como kit; cotar somente o código principal.',
         observacoes_tecnicas: data.company_notes ? `Requisito do solicitante: ${data.company_notes}` : 'Seguir as normas de montagem e torques especificados nos manuais de serviço da montadora.'
       },
@@ -352,19 +497,18 @@ function generateFallback(data) {
       categoria_eyebrow: `${brand} • ${category}`,
       componente_titulo: title,
       funcao_tecnica: `Original technical component engineered for operation within the ${category.toLowerCase()} system.`,
-      aplicacao_detalhada: data.application || `Applicable to ${brand} commercial and heavy-duty vehicles. Final fitment must be validated via vehicle identification number (VIN).`,
-      alertas_cotacao: [
-        `**Quote strictly the specified part number ${pn}. Require clear photograph of label, stamped code, or OEM packaging and verify application by VIN prior to shipment.**`,
-        `Confirm technical specifications, electrical connectors, mechanical mountings, and dimensional compatibility prior to procurement approval.`
-      ],
+      aplicacao_detalhada: appEn,
+      referencias_cruzadas: extParsed.crossRefsStr || naTextEn,
+      alertas_cotacao: alertasEn,
       especificacoes: {
         posicao_montagem: data.position ? `Position ${data.position} according to assembly catalog.` : 'Mounting according to OEM technical layout.',
-        tensao: 'Not located in specific technical sources for this reference.',
+        tensao: naTextEn,
         material: 'Heavy-duty housing specified for severe operating environments.',
-        dimensoes: 'Not located in specific technical sources for this reference.',
-        peso: 'Not located in specific technical sources for this reference.',
+        dimensoes: extParsed.dimensionsStr || naTextEn,
+        peso: naTextEn,
         conexoes: 'Standardized connections compliant with OEM automotive standards.',
-        codigo_fabricante: 'Not located in specific technical sources for this reference.',
+        codigo_fabricante: extParsed.mfgCodesStr || extParsed.crossRefsStr || naTextEn,
+        referencias_cruzadas: extParsed.crossRefsStr || naTextEn,
         conteudo_kit: 'Not supplied as kit; quote primary part number only.',
         observacoes_tecnicas: data.company_notes ? `Client requirement: ${data.company_notes}` : 'Follow assembly standards and torque specifications provided in OEM service manuals.'
       },
@@ -412,12 +556,15 @@ function assembleSingleDocument(reqData, aiData, lang = 'pt_BR') {
     }
   }
 
-  // Rótulos localizados das 16 especificações
+  const extParsed = parseExternalResearch(reqData.external_research);
+
+  // Rótulos localizados das 17 especificações
   const specLabels = isEn ? {
     componente: 'Component',
     part_number: 'Primary Part Number',
     montadora: 'Vehicle Manufacturer / OEM',
     descricao: 'Formal Technical Description',
+    referencias_cruzadas: 'Cross References & Equivalents',
     funcao: 'Function',
     aplicacao: 'Application',
     posicao: 'Mounting Position',
@@ -435,6 +582,7 @@ function assembleSingleDocument(reqData, aiData, lang = 'pt_BR') {
     part_number: 'Part number principal',
     montadora: 'Fabricante do veículo / Montadora',
     descricao: 'Descrição técnica formal',
+    referencias_cruzadas: 'Referências cruzadas e equivalências',
     funcao: 'Função',
     aplicacao: 'Aplicação',
     posicao: 'Posição de montagem',
@@ -452,6 +600,50 @@ function assembleSingleDocument(reqData, aiData, lang = 'pt_BR') {
   const naText = isEn
     ? 'Not located in specific technical sources for this reference.'
     : 'Não localizado em fonte técnica específica para esta referência.';
+
+  // Determinação determinística de valores com prioridade para pesquisa externa
+  const aiCross = aiData.referencias_cruzadas || aiData.especificacoes?.referencias_cruzadas;
+  let crossRefsVal = naText;
+  if (aiCross && !aiCross.includes('Não localizado') && !aiCross.includes('Not located') && !aiCross.includes('Não informado')) {
+    crossRefsVal = String(aiCross).trim();
+    if (extParsed.crossRefsStr && !crossRefsVal.includes(extParsed.crossRefsStr)) {
+      crossRefsVal += ` • ${extParsed.crossRefsStr}`;
+    }
+  } else if (extParsed.crossRefsStr) {
+    crossRefsVal = extParsed.crossRefsStr;
+  }
+
+  const aiMfg = aiData.especificacoes?.codigo_fabricante;
+  let codigoFabVal = naText;
+  if (aiMfg && !aiMfg.includes('Não localizado') && !aiMfg.includes('Not located') && !aiMfg.includes('Não informado')) {
+    codigoFabVal = String(aiMfg).trim();
+  } else if (extParsed.mfgCodesStr) {
+    codigoFabVal = extParsed.mfgCodesStr;
+  } else if (extParsed.crossRefsStr) {
+    codigoFabVal = extParsed.crossRefsStr;
+  }
+
+  const aiDim = aiData.especificacoes?.dimensoes;
+  let dimensoesVal = naText;
+  if (aiDim && !aiDim.includes('Não localizado') && !aiDim.includes('Not located') && !aiDim.includes('Não informado')) {
+    dimensoesVal = String(aiDim).trim();
+  } else if (extParsed.dimensionsStr) {
+    dimensoesVal = extParsed.dimensionsStr;
+  }
+
+  const baseApp = aiData.aplicacao_detalhada || reqData.application || (isEn ? `Application in ${brand} commercial vehicles. Validate via chassis/VIN.` : `Aplicação em veículos comerciais ${brand}. Validar com chassi/VIN.`);
+  let aplicacaoVal = baseApp;
+  if (extParsed.applicationStr && !baseApp.toLowerCase().includes(extParsed.applicationStr.toLowerCase())) {
+    aplicacaoVal = isEn
+      ? `${baseApp} Market / Implement application: ${extParsed.applicationStr}.`
+      : `${baseApp} Aplicação de mercado / implemento: ${extParsed.applicationStr}.`;
+  }
+
+  const calloutsList = Array.isArray(aiData.alertas_cotacao) ? [...aiData.alertas_cotacao] : [];
+  if (crossRefsVal !== naText && !calloutsList.some(c => c.includes(crossRefsVal))) {
+    const crHeading = isEn ? 'Cross References & Market Codes' : 'Referências cruzadas & códigos de mercado';
+    calloutsList.push(`🔄 **${crHeading}:** ${crossRefsVal}`);
+  }
 
   const metrics = isEn ? [
     { label: 'OEM Part Number', value: pn },
@@ -483,12 +675,13 @@ function assembleSingleDocument(reqData, aiData, lang = 'pt_BR') {
       title: aiData.componente_titulo || (reqData.title || (isEn ? 'AUTOMOTIVE COMPONENT' : 'COMPONENTE AUTOMOTIVO')).toUpperCase(),
       part_number_heading: isEn ? `PRIMARY PART NUMBER: ${pn}` : `PART NUMBER PRINCIPAL: ${pn}`,
       brand_badge: brandUpper,
+      cross_references: crossRefsVal !== naText ? crossRefsVal : null,
       image_data_url: reqData.image_p1_data_url || null,
       image_name: reqData.image_p1_name || null,
       metrics: metrics,
       application_title: isEn ? 'Primary application' : 'Aplicação principal',
-      application: aiData.aplicacao_detalhada || reqData.application || (isEn ? `Application in ${brand} commercial vehicles. Validate via chassis/VIN.` : `Aplicação em veículos comerciais ${brand}. Validar com chassi/VIN.`),
-      callouts: aiData.alertas_cotacao || []
+      application: aplicacaoVal,
+      callouts: calloutsList
     },
     page2: {
       title: isEn ? 'Technical specifications' : 'Especificações técnicas',
@@ -497,16 +690,17 @@ function assembleSingleDocument(reqData, aiData, lang = 'pt_BR') {
         { label: specLabels.part_number, value: pn },
         { label: specLabels.montadora, value: brand },
         { label: specLabels.descricao, value: reqData.title || aiData.componente_titulo || (isEn ? 'Automotive Part' : 'Peça Automotiva') },
+        { label: specLabels.referencias_cruzadas, value: crossRefsVal },
         { label: specLabels.funcao, value: aiData.funcao_tecnica || naText },
-        { label: specLabels.aplicacao, value: aiData.aplicacao_detalhada || naText },
+        { label: specLabels.aplicacao, value: aplicacaoVal },
         { label: specLabels.posicao, value: aiData.especificacoes?.posicao_montagem || (isEn ? 'According to OEM assembly catalog.' : 'Conforme catálogo da montadora.') },
         { label: specLabels.tensao, value: aiData.especificacoes?.tensao || naText },
         { label: specLabels.material, value: aiData.especificacoes?.material || naText },
-        { label: specLabels.dimensoes, value: aiData.especificacoes?.dimensoes || naText },
+        { label: specLabels.dimensoes, value: dimensoesVal },
         { label: specLabels.peso, value: aiData.especificacoes?.peso || naText },
         { label: specLabels.conexoes, value: aiData.especificacoes?.conexoes || naText },
         { label: specLabels.quantidade, value: String(reqData.quantity || '1') },
-        { label: specLabels.codigo_fab, value: aiData.especificacoes?.codigo_fabricante || naText },
+        { label: specLabels.codigo_fab, value: codigoFabVal },
         { label: specLabels.kit, value: aiData.especificacoes?.conteudo_kit || (isEn ? 'Not supplied as kit; quote primary part number only.' : 'Não tratado como kit; cotar somente o código principal.') },
         { label: specLabels.observacoes, value: aiData.especificacoes?.observacoes_tecnicas || naText }
       ],
@@ -615,6 +809,31 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  const imgMatch = /^\/api(?:\/v1)?\/datasheets\/images\/([a-f0-9]{64})$/.exec(pathname);
+  if (imgMatch && (req.method === 'GET' || req.method === 'HEAD')) {
+    const sha = imgMatch[1];
+    const remoteUrl = new URL(`/v1/datasheets/images/${sha}`, MULTI_API_URL);
+    const clientReq = https.request(remoteUrl, {
+      method: req.method,
+      headers: { 'Authorization': `Bearer ${MULTI_TOKEN}` },
+      rejectUnauthorized: false,
+      timeout: 15000
+    }, (upstreamRes) => {
+      res.writeHead(upstreamRes.statusCode || 200, {
+        'Content-Type': upstreamRes.headers['content-type'] || 'image/png',
+        'Cache-Control': upstreamRes.headers['cache-control'] || 'public, max-age=31536000, immutable',
+        'ETag': upstreamRes.headers['etag'] || `"${sha}"`
+      });
+      upstreamRes.pipe(res);
+    });
+    clientReq.on('error', (e) => {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Falha ao buscar imagem: ${e.message}` }));
+    });
+    clientReq.end();
+    return;
+  }
+
   // API endpoint de geração de DataSheet (com checagem e persistência no banco de dados)
   if (pathname === '/api/datasheets/generate' && req.method === 'POST') {
     let bodyStr = '';
@@ -641,8 +860,16 @@ const server = http.createServer(async (req, res) => {
         const pn = String(reqData.part_number).trim();
         const forceRegen = Boolean(reqData.force_regenerate);
 
-        // 1. Checagem prévia no banco de dados de datasheets (se não for forçada nova geração)
-        if (!forceRegen) {
+        const hasCustomInputs = Boolean(
+          (reqData.external_research && reqData.external_research.trim()) ||
+          (reqData.company_notes && reqData.company_notes.trim()) ||
+          (reqData.title && reqData.title.trim()) ||
+          reqData.image_p1_data_url ||
+          reqData.image_p3_data_url
+        );
+
+        // 1. Checagem prévia no banco de dados de datasheets (se não for forçada nova geração e não houver dados customizados)
+        if (!forceRegen && !hasCustomInputs) {
           const lookup = await queryMultiApi(`/v1/datasheets/lookup?part_number=${encodeURIComponent(pn)}&brand=${encodeURIComponent(brand)}`);
           if (lookup && lookup.found && lookup.datasheet && lookup.datasheet.pt_BR && lookup.datasheet.en_US) {
             console.log(`[DataSheet] ${brand} PN ${pn} localizado no banco de dados. Retornando instantaneamente.`);
@@ -695,6 +922,8 @@ const server = http.createServer(async (req, res) => {
               image_data_url: reqData.image_p1_data_url || null,
               diagram_data_url: reqData.image_p3_data_url || null
             },
+            image_data: reqData.image_p1_data_url || null,
+            image_name: reqData.image_p1_name || null,
             content_pt: bilingualDoc.pt_BR,
             content_en: bilingualDoc.en_US
           });

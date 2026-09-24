@@ -67,11 +67,22 @@ window.DatasheetRender = (function () {
     partHead.dataset.editable = 'true';
     heroTitles.append(eyebrow, mainTitle, partHead);
 
+    if (p1.cross_references && !p1.cross_references.includes('Not located') && !p1.cross_references.includes('Não localizado')) {
+      const crossRefsCallout = el('div', null, 'ds-cross-refs-callout');
+      crossRefsCallout.dataset.editable = 'true';
+      crossRefsCallout.append(
+        el('strong', isEn ? '🔄 Cross references & market codes: ' : '🔄 Referências cruzadas & códigos de mercado: '),
+        p1.cross_references
+      );
+      heroTitles.append(crossRefsCallout);
+    }
+
     // Moldura de Imagem / Foto Página 1
     const drawingBox = el('div', null, 'ds-drawing-box');
-    if (p1.image_data_url) {
+    const p1Img = p1.image_data_url || p1.image_url;
+    if (p1Img) {
       const img = el('img', null, 'ds-part-image');
-      img.src = p1.image_data_url;
+      img.src = p1Img;
       img.alt = p1.image_name || (isEn ? 'Component photograph' : 'Foto do componente');
       drawingBox.append(img);
     } else {
@@ -102,6 +113,9 @@ window.DatasheetRender = (function () {
     // Alertas de Cotação (Callouts)
     const calloutsBox = el('div', null, 'ds-callouts-container');
     for (const c of (p1.callouts || [])) {
+      if (p1.cross_references && c.includes(p1.cross_references)) {
+        continue;
+      }
       const box = el('div', null, 'ds-callout-box');
       box.dataset.editable = 'true';
       if (c.includes('**')) {
@@ -180,9 +194,10 @@ window.DatasheetRender = (function () {
 
     // Moldura do Diagrama Ampliado Página 3
     const fullDiagBox = el('div', null, 'ds-full-diagram-frame');
-    if (p3.image_data_url) {
+    const p3Img = p3.image_data_url || p3.image_url;
+    if (p3Img) {
       const diagImg = el('img', null, 'ds-diagram-img');
-      diagImg.src = p3.image_data_url;
+      diagImg.src = p3Img;
       diagImg.alt = p3.image_name || (isEn ? 'Expanded technical diagram' : 'Diagrama técnico ampliado');
       fullDiagBox.append(diagImg);
     } else {
