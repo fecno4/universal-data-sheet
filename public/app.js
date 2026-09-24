@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabPtBtn = document.getElementById('tab-pt-btn');
   const tabEnBtn = document.getElementById('tab-en-btn');
   const docReadyStatus = document.getElementById('doc-ready-status');
+  const saveAcervoBtn = document.getElementById('save-acervo-btn');
   const toggleEditBtn = document.getElementById('toggle-edit-btn');
   const restoreOriginalBtn = document.getElementById('restore-original-btn');
   const printPtBtn = document.getElementById('print-pt-btn');
@@ -161,6 +162,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isEditing) {
           document.querySelectorAll('.lang-container [data-editable]').forEach(el => el.contentEditable = 'true');
         }
+        // Persiste imediatamente no acervo PostgreSQL se o documento já estiver ativo
+        attachImageToDoc(p1ImageDataUrl, p1ImageName, 1);
       }
     };
     reader.readAsDataURL(file);
@@ -580,7 +583,127 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 9. Disparo de Impressão / Salvar PDF Oficial Isolado
+  // 9. Persistência de Imagens e Salvamento Manual no Acervo
+  async function attachImageToDoc(imageDataUrl, imageName, pageNumber = 1) {
+    if (!imageDataUrl || !currentBilingualDoc) return;
+    const brand = getSelectedBrand();
+    const partNumber = partNumberInput.value.trim() || currentBilingualDoc.pt_BR?.page1?.primary_pn;
+    if (!partNumber) return;
+
+    try {
+      const resp = await fetch('/api/datasheets/attach-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brand,
+          part_number: String(partNumber),
+          image_data: imageDataUrl,
+          image_name: imageName
+        })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.image_url) {
+          if (pageNumber === 1) {
+            if (currentBilingualDoc.pt_BR?.page1) {
+              currentBilingualDoc.pt_BR.page1.image_url = data.image_url;
+              delete currentBilingualDoc.pt_BR.page1.image_data_url;
+            }
+            if (currentBilingualDoc.en_US?.page1) {
+              currentBilingualDoc.en_US.page1.image_url = data.image_url;
+              delete currentBilingualDoc.en_US.page1.image_data_url;
+            }
+          }
+          console.log(`[Acervo Image] Imagem persistida com sucesso: ${data.image_url} (SHA-256: ${data.sha256})`);
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao persistir imagem imediatamente no acervo:', e);
+    }
+  }
+
+  async function saveCurrentDocToAcervo() {
+    if (!currentBilingualDoc) return;
+    const brand = getSelectedBrand();
+    const partNumber = partNumberInput.value.trim() || currentBilingualDoc.pt_BR?.page1?.primary_pn || 'OEM';
+    const title = currentBilingualDoc.pt_BR?.page1?.title || componentTitleInput.value.trim() || 'Componente';
+    const titleEn = currentBilingualDoc.en_US?.page1?.title || title;
+    const category = currentBilingualDoc.pt_BR?.page1?.eyebrow || categoryInput.value.trim() || null;
+    const application = currentBilingualDoc.pt_BR?.page1?.application || applicationInput.value.trim() || null;
+    const modelCompat = applicationInput.value.trim() || null;
+    const customNotes = companyNotesInput.value.trim() || null;
+    const sources = sourcesInput.value
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    if (saveAcervoBtn) {
+      saveAcervoBtn.disabled = true;
+      saveAcervoBtn.textContent = '💾 Gravando...';
+    }
+
+    const payload = {
+      brand,
+      part_number: String(partNumber),
+      title,
+      title_en: titleEn,
+      model_compat: modelCompat,
+      category,
+      application,
+      custom_notes: customNotes,
+      ai_model: aiModelSelect.value,
+      sources,
+      content_pt: currentBilingualDoc.pt_BR,
+      content_en: currentBilingualDoc.en_US,
+      image_data: p1ImageDataUrl,
+      image_name: p1ImageName,
+      diagram_data: p3ImageDataUrl,
+      diagram_name: p3ImageName
+    };
+
+    try {
+      const resp = await fetch('/api/datasheets/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) {
+        const errJson = await resp.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.detail || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      docReadyStatus.textContent = `✔ Salvo no Acervo (${brand} PN ${partNumber})`;
+      if (saveAcervoBtn) saveAcervoBtn.textContent = '✔ Salvo!';
+      if (data.image_url) {
+        if (currentBilingualDoc.pt_BR?.page1) {
+          currentBilingualDoc.pt_BR.page1.image_url = data.image_url;
+          delete currentBilingualDoc.pt_BR.page1.image_data_url;
+        }
+        if (currentBilingualDoc.en_US?.page1) {
+          currentBilingualDoc.en_US.page1.image_url = data.image_url;
+          delete currentBilingualDoc.en_US.page1.image_data_url;
+        }
+      }
+      setTimeout(() => {
+        if (saveAcervoBtn) {
+          saveAcervoBtn.disabled = false;
+          saveAcervoBtn.textContent = '💾 Salvar no Acervo';
+        }
+      }, 2500);
+    } catch (err) {
+      alert(`Erro ao salvar no acervo: ${err.message}`);
+      if (saveAcervoBtn) {
+        saveAcervoBtn.disabled = false;
+        saveAcervoBtn.textContent = '💾 Salvar no Acervo';
+      }
+    }
+  }
+
+  if (saveAcervoBtn) {
+    saveAcervoBtn.addEventListener('click', saveCurrentDocToAcervo);
+  }
+
+  // 10. Disparo de Impressão / Salvar PDF Oficial Isolado
   function printVersion(lang) {
     if (!currentBilingualDoc) return;
 

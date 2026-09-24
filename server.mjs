@@ -834,6 +834,37 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // API endpoints para salvar e anexar imagens diretamente ao acervo do PostgreSQL
+  if ((pathname === '/api/datasheets/save' || pathname === '/api/datasheets/attach-image') && req.method === 'POST') {
+    let bodyStr = '';
+    req.on('data', chunk => {
+      bodyStr += chunk;
+      if (bodyStr.length > 25 * 1024 * 1024) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Carga de dados excede o limite permitido' }));
+        req.destroy();
+      }
+    });
+    req.on('end', async () => {
+      try {
+        const bodyData = JSON.parse(bodyStr || '{}');
+        const remotePath = pathname === '/api/datasheets/save' ? '/v1/datasheets/save' : '/v1/datasheets/attach-image';
+        const result = await queryMultiApi(remotePath, 'POST', bodyData);
+        if (!result) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Falha ao salvar no banco de dados do acervo' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `Erro ao processar requisição: ${err.message}` }));
+      }
+    });
+    return;
+  }
+
   // API endpoint de geração de DataSheet (com checagem e persistência no banco de dados)
   if (pathname === '/api/datasheets/generate' && req.method === 'POST') {
     let bodyStr = '';
@@ -907,6 +938,12 @@ const server = http.createServer(async (req, res) => {
         // 2. Gravação automática no banco de dados PostgreSQL
         let dbId = null;
         try {
+          const safeSources = Array.isArray(reqData.sources)
+            ? reqData.sources
+            : (typeof reqData.sources === 'string'
+              ? reqData.sources.split('\n').map(s => s.trim()).filter(Boolean)
+              : []);
+
           const saveRes = await queryMultiApi('/v1/datasheets/save', 'POST', {
             brand: brand,
             part_number: pn,
@@ -917,19 +954,27 @@ const server = http.createServer(async (req, res) => {
             application: bilingualDoc.pt_BR?.page1?.application || reqData.application || null,
             custom_notes: reqData.company_notes || null,
             ai_model: model,
-            sources: (reqData.sources || '').split('\n').map(s => s.trim()).filter(Boolean),
+            sources: safeSources,
             images: {
               image_data_url: reqData.image_p1_data_url || null,
-              diagram_data_url: reqData.image_p3_data_url || null
+              image_name: reqData.image_p1_name || null,
+              diagram_data_url: reqData.image_p3_data_url || null,
+              diagram_name: reqData.image_p3_name || null
             },
             image_data: reqData.image_p1_data_url || null,
             image_name: reqData.image_p1_name || null,
+            diagram_data: reqData.image_p3_data_url || null,
+            diagram_name: reqData.image_p3_name || null,
             content_pt: bilingualDoc.pt_BR,
             content_en: bilingualDoc.en_US
           });
           if (saveRes && saveRes.id) {
             dbId = saveRes.id;
             console.log(`[DataSheet] Salvo com sucesso no banco de dados com ID: ${dbId}`);
+            if (saveRes.image_url) {
+              if (bilingualDoc.pt_BR?.page1) bilingualDoc.pt_BR.page1.image_url = saveRes.image_url;
+              if (bilingualDoc.en_US?.page1) bilingualDoc.en_US.page1.image_url = saveRes.image_url;
+            }
           }
         } catch (saveErr) {
           console.warn(`[DataSheet Save Warning]: ${saveErr.message}`);
