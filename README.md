@@ -11,7 +11,11 @@ Aplicação independente para geração de **DataSheets Técnicos Oficiais de 3 
 - **Geração Simultânea Bilíngue (`pt_BR` e `en_US`):** Em uma única inferência inteligente, a IA sintetiza o documento em português técnico brasileiro formal e em inglês técnico automotivo internacional para exportação global.
 - **Dois PDFs Separados em 1-Clique:** Botões dedicados `🖨️ Salvar PDF (pt-BR)` e `🖨️ Salvar PDF (en-US)` que isolam e imprimem exatamente as 3 páginas A4 da versão escolhida, configurando o nome sugerido do arquivo automaticamente.
 - **Abas de Visualização Rápida:** Alternância instantânea entre as versões `[🇧🇷 Português (pt-BR)]` e `[🇺🇸 English (en-US)]`, preservando edições manuais em ambas.
-- **Motor de IA Local On-Premise:** Conexão direta com o servidor Ollama (`http://10.88.30.12:11434` ou fallback via túnel local `127.0.0.1:11434`), utilizando modelos como `gemma4:26b` ou `qwen2.5-coder:14b` com parâmetros calibrados (`think: false`).
+- **Motor de IA Local On-Premise Multi-Servidor:**
+  - **Servidor `10.88.30.12` (Porta túnel `127.0.0.1:11434`):** Dedicado ao modelo **`gemma4:26b`** (26B parâmetros) para máxima precisão técnica e redação formal bilíngue.
+  - **Servidor `10.88.30.11` (Porta túnel `127.0.0.1:11435`):** Dedicado ao modelo **`granite4:7b-a1b-h`** (MoE com 1B ativo) para síntese ultrarrápida com baixo consumo de memória (~4.3 GB).
+  - **Governança Estrita de RAM:** Carregamento estrito de **1 único modelo por vez por servidor** para evitar esgotamento de memória e travamentos de VRAM.
+  - **Zero Ollama no Localhost:** O ambiente local do Windows não possui Ollama instalado; as conexões passam pelo túnel SSH automatizado em `run.ps1`.
 - **Upload Duplo de Imagens:**
   - **Página 1:** Foto real da peça física, etiqueta ou embalagem (compartilhada em ambas as versões).
   - **Página 3:** Diagrama técnico explodido, esquema de corte ou vista dimensional (compartilhada em ambas as versões).
