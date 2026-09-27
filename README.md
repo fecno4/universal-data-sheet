@@ -51,49 +51,24 @@ Acesse no navegador: **`http://localhost:8098`**
 
 ---
 
-## 3. Como Fazer o Deploy no Novo Container LXC (Debian / Ubuntu)
+## 3. Deploy no Container LXC de Produção (`srv-datasheet` - `10.88.30.63`)
 
-Quando você criar o novo container LXC para hospedar esta aplicação:
+A aplicação está hospedada e em produção no container LXC Debian 13 (Trixie) no Proxmox VE:
+- **IP do Container:** `10.88.30.63`
+- **Porta HTTP Direta:** `http://10.88.30.63:8098/`
+- **Porta Nginx Reverso:** `http://10.88.30.63/`
+- **Serviço systemd:** `universal-datasheet.service` (`active/running`)
 
-1. **Copiar os arquivos do projeto para o container:**
-   ```bash
-   scp -r Universal-DataSheet/* root@<IP_DO_NOVO_LXC>:/opt/universal-datasheet/
-   ```
+### Deploy Automatizado em 1-Clique:
+Para sincronizar alterações locais e reiniciar o serviço no LXC automaticamente:
+```bash
+bash scripts/deploy.sh
+```
 
-2. **Garantir Node.js 20+ no container LXC:**
-   ```bash
-   curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
-   apt-get install -y nodejs
-   ```
-
-3. **Configurar e Ativar o Serviço systemd:**
-   ```bash
-   cp /opt/universal-datasheet/systemd/universal-datasheet.service /etc/systemd/system/
-   systemctl daemon-reload
-   systemctl enable --now universal-datasheet.service
-   ```
-
-4. **Verificar o Status:**
-   ```bash
-   systemctl status universal-datasheet.service
-   ```
-
-5. **(Opcional) Configurar Nginx Reverso:**
-   Encaminhe a porta 80 do LXC para `127.0.0.1:8098` com suporte a timeouts de até 180s para a IA:
-   ```nginx
-   server {
-       listen 80;
-       server_name _;
-
-       location / {
-           proxy_pass http://127.0.0.1:8098;
-           proxy_http_version 1.1;
-           proxy_read_timeout 180s;
-           proxy_send_timeout 180s;
-           client_max_body_size 25M;
-       }
-   }
-   ```
+### Configurações Realizadas no Servidor:
+1. **Node.js 24.21.0:** Instalado via repositório oficial NodeSource.
+2. **Serviço systemd:** `/etc/systemd/system/universal-datasheet.service` habilitado e gerenciado por systemctl.
+3. **Nginx Reverso com Suporte a IA:** Proxy reverso escutando na porta 80 encaminhando para `127.0.0.1:8098` com timeouts de 300s para geração de fichas por IA e limite de upload de 50MB.
 
 ---
 
