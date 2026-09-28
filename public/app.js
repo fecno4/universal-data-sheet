@@ -1,8 +1,15 @@
 /**
- * Universal DataSheet Studio — Controlador da Aplicação Web (Suporte Bilíngue)
+ * Universal DataSheet Studio — Controlador da Aplicação Web (Suporte Bilíngue & UX v2.0)
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Elementos de Navegação / Modos
+  const modeGenerateBtn = document.getElementById('mode-generate-btn');
+  const modeAcervoBtn = document.getElementById('mode-acervo-btn');
+  const modeAcervoCount = document.getElementById('mode-acervo-count');
+  const formSection = document.getElementById('form-section');
+  const acervoSection = document.getElementById('acervo-section');
+
   // Elementos do Formulário
   const form = document.getElementById('datasheet-form');
   const brandSelect = document.getElementById('brand-select');
@@ -22,13 +29,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const generationStatus = document.getElementById('generation-status');
   const statusMessage = document.getElementById('status-message');
   const serverStatus = document.getElementById('server-status');
+  const pnLookupStatus = document.getElementById('pn-lookup-status');
+
+  // Elementos do Acervo (PostgreSQL)
   const acervoSearchInput = document.getElementById('acervo-search-input');
   const acervoSearchBtn = document.getElementById('acervo-search-btn');
   const acervoClearBtn = document.getElementById('acervo-clear-btn');
   const acervoResultsContainer = document.getElementById('acervo-results-container');
-  const pnLookupStatus = document.getElementById('pn-lookup-status');
+  const acervoListbox = document.getElementById('acervo-listbox');
+  const acervoCountBadge = document.getElementById('acervo-count-badge');
 
-  // Upload Imagem 1 (Pág. 1)
+  // Elementos do Acordeão de Enriquecimento
+  const enrichmentAccordionBtn = document.getElementById('enrichment-accordion-btn');
+  const enrichmentAccordionBody = document.getElementById('enrichment-accordion-body');
+
+  // Upload Imagem 1 (Foto Pág. 1)
+  const p1Dropzone = document.getElementById('p1-dropzone');
   const p1FileInput = document.getElementById('p1-file-input');
   const p1SelectBtn = document.getElementById('p1-select-btn');
   const p1PreviewBox = document.getElementById('p1-preview-box');
@@ -36,7 +52,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const p1FileInfo = document.getElementById('p1-file-info');
   const p1RemoveBtn = document.getElementById('p1-remove-btn');
 
-  // Upload Imagem 2 (Pág. 3)
+  // Upload Imagem 2 (Diagrama Pág. 3)
+  const p3Dropzone = document.getElementById('p3-dropzone');
   const p3FileInput = document.getElementById('p3-file-input');
   const p3SelectBtn = document.getElementById('p3-select-btn');
   const p3PreviewBox = document.getElementById('p3-preview-box');
@@ -69,8 +86,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let originalBilingualDoc = null;
   let activeLang = 'pt_BR';
   let isEditing = false;
+  let allAcervoItems = [];
 
-  // 1. Verificação de Conexão com o Servidor
+  // =========================================================================
+  // 1. VERIFICAÇÃO DE SAÚDE DO SERVIDOR
+  // =========================================================================
   async function checkHealth() {
     try {
       const resp = await fetch('/api/health');
@@ -85,7 +105,38 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   checkHealth();
 
-  // 2. Seletor de Marca Customizada
+  // =========================================================================
+  // 2. ALTERNADOR SEGMENTADO DE MODOS (GERAR vs ACERVO)
+  // =========================================================================
+  function switchViewMode(mode) {
+    if (mode === 'generate') {
+      modeGenerateBtn.classList.add('active');
+      modeGenerateBtn.setAttribute('aria-selected', 'true');
+      modeAcervoBtn.classList.remove('active');
+      modeAcervoBtn.setAttribute('aria-selected', 'false');
+      formSection.hidden = false;
+      acervoSection.hidden = true;
+    } else {
+      modeAcervoBtn.classList.add('active');
+      modeAcervoBtn.setAttribute('aria-selected', 'true');
+      modeGenerateBtn.classList.remove('active');
+      modeGenerateBtn.setAttribute('aria-selected', 'false');
+      formSection.hidden = true;
+      acervoSection.hidden = false;
+
+      // Carrega acervo sob demanda se ainda não carregado
+      if (allAcervoItems.length === 0) {
+        loadAcervoCatalog();
+      }
+    }
+  }
+
+  if (modeGenerateBtn) modeGenerateBtn.addEventListener('click', () => switchViewMode('generate'));
+  if (modeAcervoBtn) modeAcervoBtn.addEventListener('click', () => switchViewMode('acervo'));
+
+  // =========================================================================
+  // 3. SELETOR DE MARCA CUSTOMIZADA
+  // =========================================================================
   brandSelect.addEventListener('change', () => {
     if (brandSelect.value === '__custom__') {
       brandCustomInput.hidden = false;
@@ -103,7 +154,29 @@ document.addEventListener('DOMContentLoaded', () => {
     return brandSelect.value;
   }
 
-  // 3. Alternar Idioma de Visualização (pt-BR / en-US)
+  // =========================================================================
+  // 4. ACORDEÃO RETRÁTIL DE ENRIQUECIMENTO
+  // =========================================================================
+  if (enrichmentAccordionBtn && enrichmentAccordionBody) {
+    enrichmentAccordionBtn.addEventListener('click', () => {
+      const isHidden = enrichmentAccordionBody.hidden;
+      enrichmentAccordionBody.hidden = !isHidden;
+      enrichmentAccordionBtn.closest('.ds-accordion-wrapper')?.classList.toggle('open', isHidden);
+    });
+  }
+
+  function openAccordionIfFilled() {
+    if (externalResearchInput.value.trim() || companyNotesInput.value.trim() || sourcesInput.value.trim()) {
+      if (enrichmentAccordionBody) {
+        enrichmentAccordionBody.hidden = false;
+        enrichmentAccordionBtn?.closest('.ds-accordion-wrapper')?.classList.add('open');
+      }
+    }
+  }
+
+  // =========================================================================
+  // 5. ALTERNAR IDIOMA DE VISUALIZAÇÃO (pt-BR / en-US)
+  // =========================================================================
   function switchLanguage(lang) {
     activeLang = lang;
     if (lang === 'pt_BR') {
@@ -131,13 +204,11 @@ document.addEventListener('DOMContentLoaded', () => {
   tabPtBtn.addEventListener('click', () => switchLanguage('pt_BR'));
   tabEnBtn.addEventListener('click', () => switchLanguage('en_US'));
 
-  // 4. Gerenciamento de Upload de Imagem 1 (Foto Pág. 1)
-  p1SelectBtn.addEventListener('click', () => p1FileInput.click());
-
-  p1FileInput.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // =========================================================================
+  // 6. GERENCIAMENTO DE UPLOAD COM DRAG & DROP NATIVO (HTML5)
+  // =========================================================================
+  function handleP1File(file) {
+    if (!file || !file.type.startsWith('image/')) return;
     const reader = new FileReader();
     reader.onload = (evt) => {
       p1ImageDataUrl = evt.target.result;
@@ -145,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
       p1ThumbImg.src = p1ImageDataUrl;
       p1FileInfo.textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
       p1PreviewBox.hidden = false;
-      p1SelectBtn.textContent = '📷 Alterar Foto da Peça';
+      p1SelectBtn.textContent = '📷 Alterar';
 
       // Atualiza ambas as versões sincronizadamente
       if (currentBilingualDoc) {
@@ -162,19 +233,85 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isEditing) {
           document.querySelectorAll('.lang-container [data-editable]').forEach(el => el.contentEditable = 'true');
         }
-        // Persiste imediatamente no acervo PostgreSQL se o documento já estiver ativo
         attachImageToDoc(p1ImageDataUrl, p1ImageName, 1);
       }
     };
     reader.readAsDataURL(file);
-  });
+  }
 
-  p1RemoveBtn.addEventListener('click', () => {
+  function handleP3File(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      p3ImageDataUrl = evt.target.result;
+      p3ImageName = file.name;
+      p3ThumbImg.src = p3ImageDataUrl;
+      p3FileInfo.textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
+      p3PreviewBox.hidden = false;
+      p3SelectBtn.textContent = '📐 Alterar';
+
+      if (currentBilingualDoc) {
+        if (currentBilingualDoc.pt_BR?.page3) {
+          currentBilingualDoc.pt_BR.page3.image_data_url = p3ImageDataUrl;
+          currentBilingualDoc.pt_BR.page3.image_name = p3ImageName;
+          window.DatasheetRender.render(currentBilingualDoc.pt_BR, previewPtContainer);
+        }
+        if (currentBilingualDoc.en_US?.page3) {
+          currentBilingualDoc.en_US.page3.image_data_url = p3ImageDataUrl;
+          currentBilingualDoc.en_US.page3.image_name = p3ImageName;
+          window.DatasheetRender.render(currentBilingualDoc.en_US, previewEnContainer);
+        }
+        if (isEditing) {
+          document.querySelectorAll('.lang-container [data-editable]').forEach(el => el.contentEditable = 'true');
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function setupDropzone(dropzoneEl, fileInputEl, onFileSelected) {
+    if (!dropzoneEl || !fileInputEl) return;
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropzoneEl.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzoneEl.classList.add('ds-dropzone-dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropzoneEl.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzoneEl.classList.remove('ds-dropzone-dragover');
+      });
+    });
+    dropzoneEl.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      const file = dt?.files?.[0];
+      if (file && file.type.startsWith('image/')) {
+        onFileSelected(file);
+      }
+    });
+    dropzoneEl.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-remove-thumb') || e.target.closest('.upload-btn')) return;
+      fileInputEl.click();
+    });
+  }
+
+  p1SelectBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    p1FileInput.click();
+  });
+  p1FileInput.addEventListener('change', (e) => handleP1File(e.target.files?.[0]));
+  setupDropzone(p1Dropzone, p1FileInput, handleP1File);
+
+  p1RemoveBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
     p1FileInput.value = '';
     p1ImageDataUrl = null;
     p1ImageName = null;
     p1PreviewBox.hidden = true;
-    p1SelectBtn.textContent = '📁 Selecionar Foto da Peça';
+    p1SelectBtn.textContent = '📁 Selecionar';
 
     if (currentBilingualDoc) {
       if (currentBilingualDoc.pt_BR?.page1) {
@@ -193,48 +330,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 5. Gerenciamento de Upload de Imagem 2 (Diagrama Pág. 3)
-  p3SelectBtn.addEventListener('click', () => p3FileInput.click());
-
-  p3FileInput.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      p3ImageDataUrl = evt.target.result;
-      p3ImageName = file.name;
-      p3ThumbImg.src = p3ImageDataUrl;
-      p3FileInfo.textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
-      p3PreviewBox.hidden = false;
-      p3SelectBtn.textContent = '📐 Alterar Diagrama';
-
-      // Atualiza ambas as versões sincronizadamente
-      if (currentBilingualDoc) {
-        if (currentBilingualDoc.pt_BR?.page3) {
-          currentBilingualDoc.pt_BR.page3.image_data_url = p3ImageDataUrl;
-          currentBilingualDoc.pt_BR.page3.image_name = p3ImageName;
-          window.DatasheetRender.render(currentBilingualDoc.pt_BR, previewPtContainer);
-        }
-        if (currentBilingualDoc.en_US?.page3) {
-          currentBilingualDoc.en_US.page3.image_data_url = p3ImageDataUrl;
-          currentBilingualDoc.en_US.page3.image_name = p3ImageName;
-          window.DatasheetRender.render(currentBilingualDoc.en_US, previewEnContainer);
-        }
-        if (isEditing) {
-          document.querySelectorAll('.lang-container [data-editable]').forEach(el => el.contentEditable = 'true');
-        }
-      }
-    };
-    reader.readAsDataURL(file);
+  p3SelectBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    p3FileInput.click();
   });
+  p3FileInput.addEventListener('change', (e) => handleP3File(e.target.files?.[0]));
+  setupDropzone(p3Dropzone, p3FileInput, handleP3File);
 
-  p3RemoveBtn.addEventListener('click', () => {
+  p3RemoveBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
     p3FileInput.value = '';
     p3ImageDataUrl = null;
     p3ImageName = null;
     p3PreviewBox.hidden = true;
-    p3SelectBtn.textContent = '📁 Selecionar Diagrama Técnico';
+    p3SelectBtn.textContent = '📁 Selecionar';
 
     if (currentBilingualDoc) {
       if (currentBilingualDoc.pt_BR?.page3) {
@@ -254,106 +363,173 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // =========================================================================
-  // 6. ACERVO DE DATASHEETS (POSTGRESQL 10.88.30.60)
+  // 7. ACERVO CENTRALIZADO: LISTBOX INTERATIVA & FILTRO EM TEMPO REAL
   // =========================================================================
-  async function searchAcervo(queryStr) {
-    acervoClearBtn.hidden = !queryStr;
+  async function loadAcervoCatalog() {
+    if (!acervoListbox) return;
     acervoResultsContainer.hidden = false;
     acervoResultsContainer.className = 'acervo-results loading';
-    acervoResultsContainer.textContent = 'Pesquisando no banco de dados de DataSheets...';
+    acervoResultsContainer.textContent = 'Carregando acervo de DataSheets do PostgreSQL...';
 
     try {
-      const qParam = queryStr ? `?q=${encodeURIComponent(queryStr)}&limit=20` : '?limit=20';
-      const resp = await fetch(`/api/datasheets/search${qParam}`);
+      const resp = await fetch('/api/datasheets/search?limit=100');
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const res = await resp.json();
+      allAcervoItems = res?.items || [];
+      acervoResultsContainer.hidden = true;
 
-      acervoResultsContainer.className = 'acervo-results';
-      acervoResultsContainer.innerHTML = '';
-
-      const items = res?.items || [];
-      if (items.length === 0) {
-        acervoResultsContainer.textContent = queryStr
-          ? `Nenhum DataSheet encontrado no acervo para "${queryStr}". Você pode gerar um novo preenchendo os dados abaixo!`
-          : 'Nenhum DataSheet salvo no acervo até o momento.';
-        return;
-      }
-
-      const listHeader = document.createElement('div');
-      listHeader.style.cssText = 'padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border-color); font-size: 12px; color: var(--text-muted);';
-      listHeader.textContent = `Encontrados: ${res.total || items.length} DataSheet(s) arquivado(s)`;
-      acervoResultsContainer.appendChild(listHeader);
-
-      const itemsGrid = document.createElement('div');
-      itemsGrid.className = 'acervo-items-grid';
-
-      for (const it of items) {
-        const itemCard = document.createElement('div');
-        itemCard.className = 'acervo-item-card';
-
-        const cardTop = document.createElement('div');
-        cardTop.className = 'acervo-card-top';
-        const brandBadge = document.createElement('span');
-        brandBadge.className = 'acervo-brand-badge';
-        brandBadge.textContent = it.brand || 'OEM';
-        const pnSpan = document.createElement('strong');
-        pnSpan.className = 'acervo-pn-badge';
-        pnSpan.textContent = `PN ${it.part_number}`;
-        cardTop.append(brandBadge, pnSpan);
-
-        const cardTitle = document.createElement('div');
-        cardTitle.className = 'acervo-item-title';
-        cardTitle.textContent = it.title || 'Componente Veicular';
-
-        const cardMeta = document.createElement('div');
-        cardMeta.className = 'acervo-card-meta';
-        if (it.model_compat) {
-          const mSpan = document.createElement('span');
-          mSpan.textContent = `Modelo: ${it.model_compat}`;
-          cardMeta.appendChild(mSpan);
-        }
-        if (it.category) {
-          const cSpan = document.createElement('span');
-          cSpan.textContent = `Sistema: ${it.category}`;
-          cardMeta.appendChild(cSpan);
-        }
-        if (it.updated_at) {
-          const dt = new Date(it.updated_at);
-          const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('pt-BR') : '';
-          if (dateStr) {
-            const dSpan = document.createElement('span');
-            dSpan.textContent = `Atualizado em: ${dateStr}`;
-            cardMeta.appendChild(dSpan);
-          }
-        }
-
-        const openBtn = document.createElement('button');
-        openBtn.type = 'button';
-        openBtn.className = 'acervo-open-btn';
-        openBtn.textContent = '⚡ Abrir Instantâneo';
-        openBtn.onclick = () => loadSavedDatasheet(it);
-
-        itemCard.append(cardTop, cardTitle, cardMeta, openBtn);
-        itemsGrid.appendChild(itemCard);
-      }
-      acervoResultsContainer.appendChild(itemsGrid);
+      updateAcervoBadges(allAcervoItems.length, allAcervoItems.length);
+      renderAcervoListbox(allAcervoItems);
     } catch (err) {
       acervoResultsContainer.className = 'acervo-results error';
-      acervoResultsContainer.textContent = `Erro ao consultar acervo: ${err.message}`;
+      acervoResultsContainer.textContent = `Erro ao carregar acervo: ${err.message}`;
     }
   }
 
-  function clearAcervoSearch() {
-    acervoSearchInput.value = '';
-    acervoClearBtn.hidden = true;
-    acervoResultsContainer.hidden = true;
-    acervoResultsContainer.innerHTML = '';
+  function updateAcervoBadges(visibleCount, totalCount) {
+    if (modeAcervoCount) modeAcervoCount.textContent = String(totalCount);
+    if (acervoCountBadge) {
+      acervoCountBadge.textContent = visibleCount === totalCount
+        ? `${totalCount} DataSheet(s)`
+        : `${visibleCount} de ${totalCount} DataSheet(s)`;
+    }
   }
 
+  function renderAcervoListbox(items, filterTerm = '') {
+    if (!acervoListbox) return;
+    acervoListbox.innerHTML = '';
+
+    if (items.length === 0) {
+      acervoResultsContainer.hidden = false;
+      acervoResultsContainer.className = 'acervo-results';
+      acervoResultsContainer.textContent = filterTerm
+        ? `Nenhum DataSheet corresponde ao filtro "${filterTerm}".`
+        : 'Nenhum DataSheet salvo no acervo até o momento.';
+      return;
+    }
+
+    acervoResultsContainer.hidden = true;
+
+    for (const it of items) {
+      const opt = document.createElement('div');
+      opt.className = 'ds-acervo-listbox-item';
+      opt.setAttribute('role', 'option');
+      opt.setAttribute('tabindex', '0');
+      opt.setAttribute('aria-label', `${it.brand || 'OEM'} PN ${it.part_number} - ${it.title || ''}`);
+
+      const left = document.createElement('div');
+      left.className = 'ds-acervo-item-left';
+
+      const topRow = document.createElement('div');
+      topRow.className = 'ds-acervo-item-top';
+
+      const brandBadge = document.createElement('span');
+      brandBadge.className = 'acervo-brand-badge';
+      brandBadge.textContent = it.brand || 'OEM';
+
+      const pnBadge = document.createElement('strong');
+      pnBadge.className = 'acervo-pn-badge';
+      pnBadge.textContent = `PN ${it.part_number}`;
+
+      topRow.append(brandBadge, pnBadge);
+
+      if (it.updated_at || it.created_at) {
+        const dt = new Date(it.updated_at || it.created_at);
+        if (!isNaN(dt.getTime())) {
+          const dateSpan = document.createElement('span');
+          dateSpan.className = 'ds-acervo-date';
+          dateSpan.textContent = `• ${dt.toLocaleDateString('pt-BR')}`;
+          topRow.appendChild(dateSpan);
+        }
+      }
+
+      const titleEl = document.createElement('div');
+      titleEl.className = 'ds-acervo-item-title';
+      titleEl.textContent = it.title || 'Componente Veicular';
+
+      const metaEl = document.createElement('div');
+      metaEl.className = 'ds-acervo-item-meta';
+      if (it.model_compat) {
+        const mSpan = document.createElement('span');
+        mSpan.textContent = `Modelo: ${it.model_compat}`;
+        metaEl.appendChild(mSpan);
+      }
+      if (it.category) {
+        const cSpan = document.createElement('span');
+        cSpan.textContent = `Sistema: ${it.category}`;
+        metaEl.appendChild(cSpan);
+      }
+
+      left.append(topRow, titleEl, metaEl);
+
+      const openBtn = document.createElement('button');
+      openBtn.type = 'button';
+      openBtn.className = 'ds-acervo-open-btn';
+      openBtn.textContent = '⚡ Abrir Instantâneo';
+      openBtn.onclick = (e) => {
+        e.stopPropagation();
+        loadSavedDatasheet(it);
+      };
+
+      opt.append(left, openBtn);
+
+      opt.addEventListener('click', () => loadSavedDatasheet(it));
+      opt.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          loadSavedDatasheet(it);
+        }
+      });
+
+      acervoListbox.appendChild(opt);
+    }
+  }
+
+  function applyAcervoFilter(queryStr) {
+    const term = (queryStr || '').trim().toLowerCase();
+    acervoClearBtn.hidden = !term;
+
+    if (!term) {
+      updateAcervoBadges(allAcervoItems.length, allAcervoItems.length);
+      renderAcervoListbox(allAcervoItems);
+      return;
+    }
+
+    const filtered = allAcervoItems.filter(it => {
+      const pn = (it.part_number || '').toLowerCase();
+      const br = (it.brand || '').toLowerCase();
+      const ti = (it.title || '').toLowerCase();
+      const mc = (it.model_compat || '').toLowerCase();
+      const ca = (it.category || '').toLowerCase();
+      return pn.includes(term) || br.includes(term) || ti.includes(term) || mc.includes(term) || ca.includes(term);
+    });
+
+    updateAcervoBadges(filtered.length, allAcervoItems.length);
+    renderAcervoListbox(filtered, term);
+  }
+
+  acervoSearchInput.addEventListener('input', () => {
+    applyAcervoFilter(acervoSearchInput.value);
+  });
+
+  acervoClearBtn.addEventListener('click', () => {
+    acervoSearchInput.value = '';
+    applyAcervoFilter('');
+    acervoSearchInput.focus();
+  });
+
+  acervoSearchBtn.addEventListener('click', () => {
+    loadAcervoCatalog();
+  });
+
+  // =========================================================================
+  // 8. CARREGAR DATASHEET SALVO DO ACERVO
+  // =========================================================================
   async function loadSavedDatasheet(item) {
     try {
       acervoResultsContainer.className = 'acervo-results loading';
       acervoResultsContainer.textContent = `Carregando DataSheet ${item.brand || 'OEM'} PN ${item.part_number} do banco de dados...`;
+      acervoResultsContainer.hidden = false;
 
       const resp = await fetch(`/api/datasheets/${item.id}`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -385,6 +561,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.model_compat) applicationInput.value = data.model_compat;
       if (data.custom_notes) companyNotesInput.value = data.custom_notes;
 
+      openAccordionIfFilled();
+
       // Renderiza as páginas
       window.DatasheetRender.render(currentBilingualDoc.pt_BR, previewPtContainer);
       window.DatasheetRender.render(currentBilingualDoc.en_US, previewEnContainer);
@@ -396,6 +574,10 @@ document.addEventListener('DOMContentLoaded', () => {
       forceGenerateBtn.hidden = false;
       acervoResultsContainer.hidden = true;
 
+      // Volta para o modo de geração/exibição
+      switchViewMode('generate');
+
+      // Scroll suave até a prévia
       previewPtContainer.scrollIntoView({ behavior: 'smooth' });
     } catch (err) {
       acervoResultsContainer.className = 'acervo-results error';
@@ -403,30 +585,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  let acervoDebounceTimer = null;
-  acervoSearchBtn.addEventListener('click', () => {
-    clearTimeout(acervoDebounceTimer);
-    searchAcervo(acervoSearchInput.value.trim());
-  });
-  acervoClearBtn.addEventListener('click', clearAcervoSearch);
-  acervoSearchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      clearTimeout(acervoDebounceTimer);
-      searchAcervo(acervoSearchInput.value.trim());
-    }
-  });
-  acervoSearchInput.addEventListener('input', () => {
-    clearTimeout(acervoDebounceTimer);
-    const val = acervoSearchInput.value.trim();
-    if (val.length >= 2) {
-      acervoDebounceTimer = setTimeout(() => searchAcervo(val), 350);
-    } else if (val.length === 0) {
-      clearAcervoSearch();
-    }
-  });
-
-  // Checagem em tempo real ao digitar PN
+  // =========================================================================
+  // 9. VALIDAÇÃO DINÂMICA DE PART NUMBER NO ACERVO
+  // =========================================================================
   let pnLookupTimer = null;
   async function checkPnInAcervo() {
     const pn = partNumberInput.value.trim();
@@ -454,15 +615,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   partNumberInput.addEventListener('input', () => {
     clearTimeout(pnLookupTimer);
-    pnLookupTimer = setTimeout(checkPnInAcervo, 500);
+    pnLookupTimer = setTimeout(checkPnInAcervo, 400);
   });
   brandSelect.addEventListener('change', () => {
     clearTimeout(pnLookupTimer);
-    pnLookupTimer = setTimeout(checkPnInAcervo, 500);
+    pnLookupTimer = setTimeout(checkPnInAcervo, 400);
   });
 
+  // Carrega catálogo inicial em segundo plano
+  loadAcervoCatalog();
+
   // =========================================================================
-  // 7. ENVIO DO FORMULÁRIO E GERAÇÃO DOS DATASHEETS BILÍNGUES
+  // 10. ENVIO DO FORMULÁRIO E GERAÇÃO DOS DATASHEETS BILÍNGUES
   // =========================================================================
   async function submitDatasheetForm(forceRegen = false) {
     const brand = getSelectedBrand();
@@ -538,6 +702,9 @@ document.addEventListener('DOMContentLoaded', () => {
         forceGenerateBtn.hidden = false;
       }
 
+      // Atualiza catálogo do acervo em segundo plano
+      loadAcervoCatalog();
+
       // Scroll suave até a prévia
       previewPtContainer.scrollIntoView({ behavior: 'smooth' });
     } catch (err) {
@@ -558,7 +725,9 @@ document.addEventListener('DOMContentLoaded', () => {
     submitDatasheetForm(true);
   });
 
-  // 7. Alternar Modo de Edição Inline WYSIWYG
+  // =========================================================================
+  // 11. ALTERNAR MODO DE EDIÇÃO INLINE WYSIWYG
+  // =========================================================================
   toggleEditBtn.addEventListener('click', () => {
     isEditing = !isEditing;
     toggleEditBtn.textContent = isEditing ? '💾 Desativar Edição' : '✏️ Ativar Edição';
@@ -570,7 +739,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // 8. Restaurar IA Original
+  // =========================================================================
+  // 12. RESTAURAR IA ORIGINAL
+  // =========================================================================
   restoreOriginalBtn.addEventListener('click', () => {
     if (!originalBilingualDoc) return;
     if (confirm('Deseja descartar as edições manuais e restaurar as versões originais (pt-BR e en-US) geradas pela IA?')) {
@@ -583,7 +754,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 9. Persistência de Imagens e Salvamento Manual no Acervo
+  // =========================================================================
+  // 13. PERSISTÊNCIA DE IMAGENS E SALVAMENTO MANUAL NO ACERVO
+  // =========================================================================
   async function attachImageToDoc(imageDataUrl, imageName, pageNumber = 1) {
     if (!imageDataUrl || !currentBilingualDoc) return;
     const brand = getSelectedBrand();
@@ -684,6 +857,9 @@ document.addEventListener('DOMContentLoaded', () => {
           delete currentBilingualDoc.en_US.page1.image_data_url;
         }
       }
+      // Atualiza catálogo local
+      loadAcervoCatalog();
+
       setTimeout(() => {
         if (saveAcervoBtn) {
           saveAcervoBtn.disabled = false;
@@ -703,7 +879,9 @@ document.addEventListener('DOMContentLoaded', () => {
     saveAcervoBtn.addEventListener('click', saveCurrentDocToAcervo);
   }
 
-  // 10. Disparo de Impressão / Salvar PDF Oficial Isolado
+  // =========================================================================
+  // 14. IMPRESSÃO / SALVAR PDF OFICIAL ISOLADO
+  // =========================================================================
   function printVersion(lang) {
     if (!currentBilingualDoc) return;
 
@@ -714,13 +892,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const pnSafe = (partNumberInput.value.trim() || 'OEM').replace(/[^a-zA-Z0-9_-]/g, '_');
     const originalTitle = document.title;
 
-    // Configura o título da aba para sugerir o nome correto do PDF ao salvar
+    // Sugere nome de arquivo oficial para exportação PDF
     document.title = `DataSheet_${lang}_${brandSafe}_${pnSafe}`;
 
-    // Dispara a impressão imediatamente após o recálculo de estilo
     setTimeout(() => {
       window.print();
-      // Restaura o título após a abertura do diálogo de impressão
       setTimeout(() => {
         document.title = originalTitle;
       }, 1000);

@@ -26,28 +26,38 @@ Aplicação independente para geração de **DataSheets Técnicos Oficiais de 3 
   - **Página 1:** Identificação formal da montadora, título hero, part number, fotografia, métricas e alertas de cotação.
   - **Página 2:** 16 especificações técnicas estruturadas, checklist de fornecimento e limite de confirmação.
   - **Página 3:** Diagrama ampliado, nota de conferência, fontes consultadas e disclaimer regulatório.
+- **Arquitetura UX/UI v2.0 (Design Moderno & Produtividade):**
+  - **Alternador Segmentado de Modos:** Abas em pílulas (`⚡ Gerar Novo DataSheet` e `📚 Explorar Acervo de Fichas Salvas`) para foco operacional imediato.
+  - **Hero Input de Part Number (48px):** Campo de alto impacto visual com busca instantânea no acervo e badge dinâmico interativo (`⚡ Já no Acervo!`).
+  - **Dropzones Compactas (~68px) com Drag & Drop Nativo:** Arraste e solte fotografias e diagramas técnicos diretamente na interface.
+  - **Acordeão Retrátil de Enriquecimento:** Campos de pesquisa externa, observações corporativas e fontes recolhidos por padrão para máxima ergonomia.
+  - **ListBox Interativa do Acervo & Filtro em Tempo Real:** Semântica WAI-ARIA (`role="listbox"`, `role="option"`) com filtro client-side instantâneo a cada tecla digitada sem recarregar a tela.
+- **Suíte de Testes Automatizada:** Cobertura de testes unitários para a interface, integridade de rotas e entrega de assets estáticos via `node --test` (4/4 testes aprovados).
 - **Modo de Edição Inline WYSIWYG:** Possibilidade de alterar qualquer campo de texto diretamente no documento visual antes da impressão em qualquer idioma.
 - **Impressão PDF Calibrada:** Compatível com Safari/WebKit (macOS), Google Chrome, Firefox e Edge, gerando estritamente 3 páginas sem páginas em branco intercaladas.
 - **Zero Dependências npm:** Desenvolvido em Node.js nativo puro (sem necessidade de `npm install`).
 
 ---
 
-## 2. Como Executar Localmente (Windows)
+## 2. Como Executar Localmente
 
-### Opção 1: Via Script 1-Clique (Recomendado)
-No terminal PowerShell:
+### Opção 1: Via Script 1-Clique (Windows)
 ```powershell
-cd c:\Users\work\Nextcloud\VSCode\Universal-DataSheet
 .\run.ps1
 ```
 O script iniciará o servidor e abrirá o navegador automaticamente em `http://localhost:8098`.
 
 ### Opção 2: Diretamente via Node.js
-```powershell
-cd c:\Users\work\Nextcloud\VSCode\Universal-DataSheet
+```bash
 node server.mjs
 ```
 Acesse no navegador: **`http://localhost:8098`**
+
+### Opção 3: Executar a Suíte de Testes
+```bash
+node --test
+# 4 pass / 0 fail (100% de sucesso)
+```
 
 ---
 
