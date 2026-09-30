@@ -1288,6 +1288,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (dsIdMatch && req.method === 'DELETE') {
+    const dsId = dsIdMatch[1];
+    const result = await queryMultiApi(`/v1/datasheets/${dsId}?scope=universal`, 'DELETE');
+    if (!result) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'DataSheet não encontrado ou não pôde ser excluído' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result));
+    return;
+  }
+
   const imgMatch = /^(?:\/api)?(?:\/v1)?\/datasheets\/images\/(?:b['"])?([a-f0-9]{64})['"]?$/.exec(pathname);
   if (imgMatch && (req.method === 'GET' || req.method === 'HEAD')) {
     const sha = imgMatch[1];

@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabEnBtn = document.getElementById('tab-en-btn');
   const docReadyStatus = document.getElementById('doc-ready-status');
   const saveAcervoBtn = document.getElementById('save-acervo-btn');
+  const deleteDocBtn = document.getElementById('delete-doc-btn');
   const toggleEditBtn = document.getElementById('toggle-edit-btn');
   const restoreOriginalBtn = document.getElementById('restore-original-btn');
   const printPtBtn = document.getElementById('print-pt-btn');
@@ -84,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentBilingualDoc = null;
   let originalBilingualDoc = null;
+  let currentSavedDocId = null;
   let activeLang = 'pt_BR';
   let isEditing = false;
   let allAcervoItems = [];
@@ -481,6 +483,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       left.append(topRow, titleEl, metaEl);
 
+      const actionsEl = document.createElement('div');
+      actionsEl.className = 'ds-acervo-item-actions';
+
       const openBtn = document.createElement('button');
       openBtn.type = 'button';
       openBtn.className = 'ds-acervo-open-btn';
@@ -490,7 +495,18 @@ document.addEventListener('DOMContentLoaded', () => {
         loadSavedDatasheet(it);
       };
 
-      opt.append(left, openBtn);
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'ds-acervo-delete-btn';
+      deleteBtn.title = `Excluir ${it.brand || 'OEM'} PN ${it.part_number} do Acervo`;
+      deleteBtn.textContent = '🗑️';
+      deleteBtn.onclick = async (e) => {
+        e.stopPropagation();
+        await deleteDatasheetItem(it);
+      };
+
+      actionsEl.append(openBtn, deleteBtn);
+      opt.append(left, actionsEl);
 
       opt.addEventListener('click', () => loadSavedDatasheet(it));
       opt.addEventListener('keydown', (e) => {
@@ -501,6 +517,38 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       acervoListbox.appendChild(opt);
+    }
+  }
+
+  async function deleteDatasheetItem(item) {
+    const pn = item.part_number || 'OEM';
+    const brand = item.brand || 'OEM';
+    const confirmed = window.confirm(`Deseja realmente excluir o DataSheet ${brand} PN ${pn} do acervo? Esta ação não pode ser desfeita.`);
+    if (!confirmed) return;
+
+    try {
+      const resp = await fetch(`/api/datasheets/${item.id}`, { method: 'DELETE' });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+
+      if (currentSavedDocId === item.id) {
+        currentSavedDocId = null;
+        currentBilingualDoc = null;
+        originalBilingualDoc = null;
+        previewPtContainer.innerHTML = '';
+        previewEnContainer.innerHTML = '';
+        previewPtContainer.hidden = true;
+        previewEnContainer.hidden = true;
+        docActionsSection.hidden = true;
+        if (deleteDocBtn) deleteDocBtn.hidden = true;
+      }
+
+      await loadAcervoCatalog();
+      alert(`DataSheet ${brand} PN ${pn} excluído com sucesso do acervo.`);
+    } catch (err) {
+      alert(`Falha ao excluir DataSheet: ${err.message}`);
     }
   }
 
@@ -609,7 +657,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
 
-      if (!data || !data.content_pt) throw new Error('Dados do DataSheet não retornados pelo servidor');
+      currentSavedDocId = data.id || item.id;
+      if (deleteDocBtn) deleteDocBtn.hidden = false;
 
       currentBilingualDoc = {
         pt_BR: data.content_pt,
@@ -786,6 +835,9 @@ document.addEventListener('DOMContentLoaded', () => {
       docActionsSection.hidden = false;
       switchLanguage('pt_BR');
 
+      currentSavedDocId = bilingualDoc.database_id || null;
+      if (deleteDocBtn) deleteDocBtn.hidden = !currentSavedDocId;
+
       if (bilingualDoc.cached) {
         docReadyStatus.textContent = `⚡ Recuperado do Acervo (${brand})`;
         forceGenerateBtn.hidden = false;
@@ -960,6 +1012,10 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(errJson.error || errJson.detail || `HTTP ${resp.status}`);
       }
       const data = await resp.json();
+      if (data.id) {
+        currentSavedDocId = data.id;
+        if (deleteDocBtn) deleteDocBtn.hidden = false;
+      }
       docReadyStatus.textContent = `✔ Salvo no Acervo (${brand} PN ${partNumber})`;
       if (saveAcervoBtn) saveAcervoBtn.textContent = '✔ Salvo!';
       if (data.image_url) {
@@ -1007,6 +1063,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (saveAcervoBtn) {
     saveAcervoBtn.addEventListener('click', saveCurrentDocToAcervo);
+  }
+
+  if (deleteDocBtn) {
+    deleteDocBtn.addEventListener('click', async () => {
+      if (!currentSavedDocId) {
+        alert('Este DataSheet ainda não foi salvo no acervo.');
+        return;
+      }
+      const pn = partNumberInput.value.trim() || currentBilingualDoc?.pt_BR?.page1?.primary_pn || 'OEM';
+      const brand = getSelectedBrand() || 'OEM';
+      const confirmed = window.confirm(`Deseja realmente excluir o DataSheet ${brand} PN ${pn} do acervo? Esta ação não pode ser desfeita.`);
+      if (!confirmed) return;
+
+      try {
+        const resp = await fetch(`/api/datasheets/${currentSavedDocId}`, { method: 'DELETE' });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${resp.status}`);
+        }
+
+        currentSavedDocId = null;
+        currentBilingualDoc = null;
+        originalBilingualDoc = null;
+        previewPtContainer.innerHTML = '';
+        previewEnContainer.innerHTML = '';
+        previewPtContainer.hidden = true;
+        previewEnContainer.hidden = true;
+        docActionsSection.hidden = true;
+        deleteDocBtn.hidden = true;
+
+        await loadAcervoCatalog();
+        alert(`DataSheet ${brand} PN ${pn} excluído com sucesso do acervo.`);
+      } catch (err) {
+        alert(`Falha ao excluir DataSheet: ${err.message}`);
+      }
+    });
   }
 
   // =========================================================================

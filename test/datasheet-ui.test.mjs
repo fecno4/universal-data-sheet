@@ -131,4 +131,24 @@ test('Universal DataSheet Studio v2.0: proxy e sanitização de imagens de datas
   assert.match(js, /target_page:\s*pageNumber/, 'app.js deve enviar target_page ao anexar imagem');
 });
 
+test('Universal DataSheet Studio v2.0: suporte à exclusão de datasheets (UI e API)', () => {
+  const htmlPath = path.join(projectRoot, 'public', 'index.html');
+  const html = fs.readFileSync(htmlPath, 'utf8');
+  assert.match(html, /id="delete-doc-btn"/, 'Deve conter botão #delete-doc-btn na barra de ações');
+
+  const cssPath = path.join(projectRoot, 'public', 'style.css');
+  const css = fs.readFileSync(cssPath, 'utf8');
+  assert.match(css, /\.ds-acervo-delete-btn/, 'Deve conter estilo para botão de exclusão no item do acervo');
+  assert.match(css, /\.btn-danger/, 'Deve conter classe .btn-danger');
+
+  const jsPath = path.join(projectRoot, 'public', 'app.js');
+  const js = fs.readFileSync(jsPath, 'utf8');
+  assert.match(js, /deleteDatasheetItem/, 'Deve implementar deleteDatasheetItem');
+  assert.match(js, /deleteDocBtn/, 'Deve manipular botão deleteDocBtn');
+
+  const serverPath = path.join(projectRoot, 'server.mjs');
+  const serverCode = fs.readFileSync(serverPath, 'utf8');
+  assert.match(serverCode, /dsIdMatch\s*&&\s*req\.method\s*===\s*['"]DELETE['"]/, 'server.mjs deve suportar DELETE /api/datasheets/:id');
+});
+
 
