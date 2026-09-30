@@ -137,6 +137,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================================
   // 3. SELETOR DE MARCA CUSTOMIZADA
   // =========================================================================
+  const brandScaniaWarning = document.getElementById('brand-scania-warning');
+
+  function checkBrandScaniaWarning() {
+    const b = getSelectedBrand().trim().toLowerCase();
+    if (brandScaniaWarning) {
+      brandScaniaWarning.style.display = (b === 'scania') ? 'block' : 'none';
+    }
+  }
+
   brandSelect.addEventListener('change', () => {
     if (brandSelect.value === '__custom__') {
       brandCustomInput.hidden = false;
@@ -145,6 +154,11 @@ document.addEventListener('DOMContentLoaded', () => {
       brandCustomInput.hidden = true;
       brandCustomInput.value = '';
     }
+    checkBrandScaniaWarning();
+  });
+
+  brandCustomInput.addEventListener('input', () => {
+    checkBrandScaniaWarning();
   });
 
   function getSelectedBrand() {
@@ -592,7 +606,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function checkPnInAcervo() {
     const pn = partNumberInput.value.trim();
     const brand = getSelectedBrand();
-    if (!pn || pn.length < 3) {
+    if (!pn || pn.length < 3 || brand.trim().toLowerCase() === 'scania') {
       pnLookupStatus.hidden = true;
       return;
     }
@@ -621,6 +635,10 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(pnLookupTimer);
     pnLookupTimer = setTimeout(checkPnInAcervo, 400);
   });
+  brandCustomInput.addEventListener('input', () => {
+    clearTimeout(pnLookupTimer);
+    pnLookupTimer = setTimeout(checkPnInAcervo, 400);
+  });
 
   // Carrega catálogo inicial em segundo plano
   loadAcervoCatalog();
@@ -635,6 +653,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!partNumber) {
       alert('Por favor, informe o Part Number principal.');
       partNumberInput.focus();
+      return;
+    }
+
+    if (brand.trim().toLowerCase() === 'scania') {
+      alert('Componentes Scania possuem catálogo e acervo oficiais dedicados.\n\nPor favor utilize o Catálogo Scania Multi Oficial (http://10.88.30.61:8080/#datasheet) para gerar e consultar fichas técnicas Scania.');
       return;
     }
 
@@ -760,6 +783,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function attachImageToDoc(imageDataUrl, imageName, pageNumber = 1) {
     if (!imageDataUrl || !currentBilingualDoc) return;
     const brand = getSelectedBrand();
+    if (brand.trim().toLowerCase() === 'scania') return;
     const partNumber = partNumberInput.value.trim() || currentBilingualDoc.pt_BR?.page1?.primary_pn;
     if (!partNumber) return;
 
@@ -769,6 +793,7 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           brand,
+          scope: 'universal',
           part_number: String(partNumber),
           image_data: imageDataUrl,
           image_name: imageName
@@ -798,6 +823,10 @@ document.addEventListener('DOMContentLoaded', () => {
   async function saveCurrentDocToAcervo() {
     if (!currentBilingualDoc) return;
     const brand = getSelectedBrand();
+    if (brand.trim().toLowerCase() === 'scania') {
+      alert('Peças Scania são gerenciadas exclusivamente no Catálogo Scania Multi Oficial.');
+      return;
+    }
     const partNumber = partNumberInput.value.trim() || currentBilingualDoc.pt_BR?.page1?.primary_pn || 'OEM';
     const title = currentBilingualDoc.pt_BR?.page1?.title || componentTitleInput.value.trim() || 'Componente';
     const titleEn = currentBilingualDoc.en_US?.page1?.title || title;
@@ -817,6 +846,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const payload = {
       brand,
+      scope: 'universal',
       part_number: String(partNumber),
       title,
       title_en: titleEn,

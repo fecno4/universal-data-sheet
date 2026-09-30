@@ -19,7 +19,8 @@ async function queryMultiApi(pathWithQuery, method = 'GET', bodyData = null) {
       const targetUrl = new URL(pathWithQuery, MULTI_API_URL);
       const reqHeaders = {
         'Authorization': `Bearer ${MULTI_TOKEN}`,
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'X-Datasheet-Scope': 'universal'
       };
       let payloadStr = null;
       if (bodyData && (method === 'POST' || method === 'PUT')) {
@@ -1237,13 +1238,18 @@ const server = http.createServer(async (req, res) => {
   // API endpoints para o Acervo de DataSheets (PostgreSQL no container 10.88.30.60)
   if (pathname === '/api/datasheets/lookup' && req.method === 'GET') {
     const pn = parsedUrl.searchParams.get('part_number') || '';
-    const brand = parsedUrl.searchParams.get('brand') || 'Scania';
+    const brand = parsedUrl.searchParams.get('brand') || 'Multimarcas';
     if (!pn) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'part_number é obrigatório' }));
       return;
     }
-    const result = await queryMultiApi(`/v1/datasheets/lookup?part_number=${encodeURIComponent(pn)}&brand=${encodeURIComponent(brand)}`);
+    if (brand.trim().toLowerCase() === 'scania') {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Peças Scania são gerenciadas exclusivamente no Catálogo Scania Multi Oficial.' }));
+      return;
+    }
+    const result = await queryMultiApi(`/v1/datasheets/lookup?part_number=${encodeURIComponent(pn)}&brand=${encodeURIComponent(brand)}&scope=universal`);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(result || { found: false, datasheet: null }));
     return;
@@ -1254,7 +1260,12 @@ const server = http.createServer(async (req, res) => {
     const brand = parsedUrl.searchParams.get('brand') || '';
     const limit = parsedUrl.searchParams.get('limit') || '25';
     const offset = parsedUrl.searchParams.get('offset') || '0';
-    let queryParams = `limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`;
+    if (brand.trim().toLowerCase() === 'scania') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ total: 0, items: [], limit: parseInt(limit), offset: parseInt(offset), has_more: false }));
+      return;
+    }
+    let queryParams = `scope=universal&limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`;
     if (q) queryParams += `&q=${encodeURIComponent(q)}`;
     if (brand) queryParams += `&brand=${encodeURIComponent(brand)}`;
     const result = await queryMultiApi(`/v1/datasheets/search?${queryParams}`);
@@ -1266,7 +1277,7 @@ const server = http.createServer(async (req, res) => {
   const dsIdMatch = /^\/api\/datasheets\/([0-9a-fA-F-]{36})$/.exec(pathname);
   if (dsIdMatch && req.method === 'GET') {
     const dsId = dsIdMatch[1];
-    const result = await queryMultiApi(`/v1/datasheets/${dsId}`);
+    const result = await queryMultiApi(`/v1/datasheets/${dsId}?scope=universal`);
     if (!result) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'DataSheet não encontrado no acervo' }));
@@ -1316,6 +1327,12 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const bodyData = JSON.parse(bodyStr || '{}');
+        if (bodyData.brand && String(bodyData.brand).trim().toLowerCase() === 'scania') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Peças Scania são gerenciadas exclusivamente no Catálogo Scania Multi Oficial.' }));
+          return;
+        }
+        bodyData.scope = 'universal';
         const remotePath = pathname === '/api/datasheets/save' ? '/v1/datasheets/save' : '/v1/datasheets/attach-image';
         const result = await queryMultiApi(remotePath, 'POST', bodyData);
         if (!result) {
@@ -1359,6 +1376,12 @@ const server = http.createServer(async (req, res) => {
         const pn = String(reqData.part_number).trim();
         const forceRegen = Boolean(reqData.force_regenerate);
 
+        if (brand.toLowerCase() === 'scania') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Peças Scania são gerenciadas exclusivamente no Catálogo Scania Multi Oficial (http://10.88.30.61:8080/#datasheet).' }));
+          return;
+        }
+
         const hasCustomInputs = Boolean(
           (reqData.external_research && reqData.external_research.trim()) ||
           (reqData.company_notes && reqData.company_notes.trim()) ||
@@ -1369,7 +1392,7 @@ const server = http.createServer(async (req, res) => {
 
         // 1. Checagem prévia no banco de dados de datasheets (se não for forçada nova geração e não houver dados customizados)
         if (!forceRegen && !hasCustomInputs) {
-          const lookup = await queryMultiApi(`/v1/datasheets/lookup?part_number=${encodeURIComponent(pn)}&brand=${encodeURIComponent(brand)}`);
+          const lookup = await queryMultiApi(`/v1/datasheets/lookup?part_number=${encodeURIComponent(pn)}&brand=${encodeURIComponent(brand)}&scope=universal`);
           if (lookup && lookup.found && lookup.datasheet && lookup.datasheet.pt_BR && lookup.datasheet.en_US) {
             console.log(`[DataSheet] ${brand} PN ${pn} localizado no banco de dados. Retornando instantaneamente.`);
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1415,6 +1438,7 @@ const server = http.createServer(async (req, res) => {
           const saveRes = await queryMultiApi('/v1/datasheets/save', 'POST', {
             brand: brand,
             part_number: pn,
+            scope: 'universal',
             title: bilingualDoc.pt_BR?.page1?.title || reqData.title || 'Componente Veicular',
             title_en: bilingualDoc.en_US?.page1?.title || reqData.title || 'Vehicle Component',
             model_compat: reqData.application || null,

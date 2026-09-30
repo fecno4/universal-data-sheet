@@ -1,6 +1,6 @@
 # Status e Arquitetura — Universal DataSheet Studio v2.0
 
-> **Data de Atualização:** 27 de Setembro de 2026  
+> **Data de Atualização:** 30 de Setembro de 2026  
 > **Ambiente Base:** Debian 13 (Trixie) amd64 no Container LXC `113` (`srv-datasheet` · `10.88.30.63`)  
 > **Repositório Git:** `fecno4/universal-data-sheet` (`origin/main`)
 
@@ -8,13 +8,16 @@
 
 ## 1. Visão Geral Executiva
 
-O **Universal DataSheet Studio** é uma aplicação independente voltada para a geração padronizada e enriquecimento técnico de **DataSheets Oficiais de 3 Páginas (Padrão A4 Bilíngue: pt-BR e en-US)** para componentes pesados de qualquer montadora ou fabricante (Volvo, Mercedes-Benz, Scania, DAF, MAN, Iveco, Volkswagen, Cummins, Caterpillar, Bosch, ZF, Knorr, Wabco, Eaton, etc.).
+O **Universal DataSheet Studio** é uma aplicação independente voltada para a geração padronizada e enriquecimento técnico de **DataSheets Oficiais de 3 Páginas (Padrão A4 Bilíngue: pt-BR e en-US)** para componentes pesados de montadoras e fabricantes multimarcas (Volvo, Mercedes-Benz, DAF, MAN, Iveco, Volkswagen Caminhões, Cummins, Caterpillar, Bosch, ZF, Knorr, Wabco, Eaton, Facchini, Randon, etc.).
+
+> [!IMPORTANT]
+> **Isolamento de Marca:** Componentes da montadora Scania são gerenciados **exclusivamente** no Catálogo Scania Multi Oficial (`http://10.88.30.61:8080/#datasheet` / banco `datasheets`). O Universal DataSheet Studio é dedicado com isolamento estrito às demais montadoras, gravando no banco `universal_datasheets`.
 
 A aplicação opera integrada ao ecossistema on-premise Proxmox VE:
 1. **Frontend / Gateway Node.js:** Hospedado no container LXC `113` (`srv-datasheet` - `10.88.30.63`), com Nginx reverso na porta 80 e processo Node.js nativo na porta 8098.
 2. **Motor de IA Local com Aceleração por GPU:** Conectado diretamente ao servidor `10.88.30.12` (GPU NVIDIA RTX 5060 Ti 16GB), executando o modelo multimodal primário `gemma4:12b-it-qat` e modelos analíticos complementares (`gpt-oss:20b`, `gemma4:26b`).
 3. **Motor MoE Ultrarrápido:** Conectado ao servidor `10.88.30.11` executando `granite4:7b-a1b-h` (1B ativo) para inferências de alta velocidade.
-4. **Acervo Centralizado PostgreSQL UTF-8:** Integrado ao banco de dados `datasheets` no container LXC `10.88.30.60:8443`, fornecendo persistência relacional, deduplicação de imagens por SHA-256 e cache instantâneo (< 50ms) antes de inferência por IA.
+4. **Acervo Centralizado PostgreSQL UTF-8:** Integrado ao banco de dados `universal_datasheets` no container LXC `10.88.30.60:8443` com header `X-Datasheet-Scope: universal`, fornecendo persistência relacional, deduplicação de imagens por SHA-256 e cache instantâneo (< 50ms) antes de inferência por IA.
 
 ---
 
@@ -22,15 +25,15 @@ A aplicação opera integrada ao ecossistema on-premise Proxmox VE:
 
 | Componente | Localização | Ambiente / Destino | Status | Validação |
 | :--- | :--- | :--- | :--- | :--- |
-| **Frontend Web v2.0** | `/public/` | Browser / Nginx (`10.88.30.63:80`) | **100% Concluído & Em Produção (UI v2.0 com Seletor Segmentado de Modos, Hero Input 48px, Dropzones compactas Drag & Drop HTML5, Acordeão de Enriquecimento, ListBox WAI-ARIA com live filter)** | 27/09/2026 |
-| **Gateway Node.js** | `/server.mjs` | LXC `10.88.30.63:8098` | **Ativo / Em Produção (Node.js v24.21.0, rotas de API, streaming de assets estáticos e proxy para Multi-API e Ollama)** | 27/09/2026 |
-| **Serviço systemd** | `/systemd/universal-datasheet.service` | LXC `10.88.30.63` (`/etc/systemd/system/`) | **Ativo / Running (Reinício automático on-failure, NOFILE 65536)** | 27/09/2026 |
-| **Nginx Reverso** | `/etc/nginx/sites-available/universal-datasheet` | LXC `10.88.30.63:80` | **Ativo / Em Produção (Proxy para 127.0.0.1:8098 com timeouts de 300s para IA e max body size de 50MB)** | 27/09/2026 |
-| **Integração IA GPU** | Servidor `10.88.30.12:11434` | Rede Proxmox VE (RTX 5060 Ti 16GB) | **100% Integrado (gemma4:12b-it-qat, gpt-oss:20b, gemma4:26b)** | 27/09/2026 |
-| **Integração IA MoE** | Servidor `10.88.30.11:11434` | Rede Proxmox VE | **100% Integrado (granite4:7b-a1b-h)** | 27/09/2026 |
-| **Integração PostgreSQL** | LXC `10.88.30.60:8443` | Banco `datasheets` (PostgreSQL 17) | **100% Integrado (Lookup instantâneo, persistência de fichas e imagens SHA-256)** | 27/09/2026 |
-| **Script de Deploy** | `/scripts/deploy.sh` | Shell Bash Automatizado | **100% Concluído (Deploy em 1-clique via rsync + systemctl + nginx reload)** | 27/09/2026 |
-| **Suíte de Testes** | `/test/datasheet-ui.test.mjs` | Node Test Runner (`node --test`) | **4/4 Testes Aprovados (100% Local e no LXC de Produção)** | 27/09/2026 |
+| **Frontend Web v2.0** | `/public/` | Browser / Nginx (`10.88.30.63:80`) | **100% Concluído & Em Produção (UI v2.0 com Seletor Segmentado de Modos, Hero Input 48px, Dropzones compactas Drag & Drop HTML5, Acordeão de Enriquecimento, ListBox WAI-ARIA com live filter, Isolamento Scania com alerta)** | 30/09/2026 |
+| **Gateway Node.js** | `/server.mjs` | LXC `10.88.30.63:8098` | **Ativo / Em Produção (Node.js v24.21.0, rotas de API com scope=universal, streaming de assets estáticos e proxy para Multi-API e Ollama)** | 30/09/2026 |
+| **Serviço systemd** | `/systemd/universal-datasheet.service` | LXC `10.88.30.63` (`/etc/systemd/system/`) | **Ativo / Running (Reinício automático on-failure, NOFILE 65536)** | 30/09/2026 |
+| **Nginx Reverso** | `/etc/nginx/sites-available/universal-datasheet` | LXC `10.88.30.63:80` | **Ativo / Em Produção (Proxy para 127.0.0.1:8098 com timeouts de 300s para IA e max body size de 50MB)** | 30/09/2026 |
+| **Integração IA GPU** | Servidor `10.88.30.12:11434` | Rede Proxmox VE (RTX 5060 Ti 16GB) | **100% Integrado (gemma4:12b-it-qat, gpt-oss:20b, gemma4:26b)** | 30/09/2026 |
+| **Integração IA MoE** | Servidor `10.88.30.11:11434` | Rede Proxmox VE | **100% Integrado (granite4:7b-a1b-h)** | 30/09/2026 |
+| **Integração PostgreSQL** | LXC `10.88.30.60:8443` | Banco `universal_datasheets` (PostgreSQL 17) | **100% Integrado (Lookup instantâneo, persistência de fichas e imagens SHA-256 com isolamento de acervo)** | 30/09/2026 |
+| **Script de Deploy** | `/scripts/deploy.sh` | Shell Bash Automatizado | **100% Concluído (Deploy em 1-clique via rsync + systemctl + nginx reload)** | 30/09/2026 |
+| **Suíte de Testes** | `/test/datasheet-ui.test.mjs` | Node Test Runner (`node --test`) | **5/5 Testes Aprovados (100% Local e no LXC de Produção)** | 30/09/2026 |
 
 ---
 

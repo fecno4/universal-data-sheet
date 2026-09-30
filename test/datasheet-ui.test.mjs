@@ -100,3 +100,21 @@ test('Universal DataSheet Studio v2.0: server.mjs protege rotas e entrega assets
   assert.match(serverCode, /\/api\/datasheets\/generate/, 'Deve conter rota /api/datasheets/generate');
 });
 
+test('Universal DataSheet Studio v2.0: isolamento estrito de acervo Scania e escopo universal', () => {
+  const htmlPath = path.join(projectRoot, 'public', 'index.html');
+  const html = fs.readFileSync(htmlPath, 'utf8');
+  assert.ok(!html.includes('<option value="Scania">Scania</option>'), 'index.html não deve listar Scania no seletor multimarcas');
+  assert.match(html, /id="brand-scania-warning"/, 'Deve exibir aviso orientando catálogo Scania dedicado');
+
+  const serverPath = path.join(projectRoot, 'server.mjs');
+  const serverCode = fs.readFileSync(serverPath, 'utf8');
+  assert.match(serverCode, /X-Datasheet-Scope/, 'Deve incluir header X-Datasheet-Scope');
+  assert.match(serverCode, /scope=universal/, 'Deve solicitar scope=universal no backend');
+  assert.match(serverCode, /scania/i, 'Deve conter verificação e rejeição para marca Scania');
+
+  const jsPath = path.join(projectRoot, 'public', 'app.js');
+  const js = fs.readFileSync(jsPath, 'utf8');
+  assert.match(js, /checkBrandScaniaWarning/, 'Deve implementar verificação visual de marca Scania');
+  assert.match(js, /scope:\s*['"]universal['"]/, 'Deve persistir com scope universal');
+});
+
