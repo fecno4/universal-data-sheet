@@ -1464,8 +1464,24 @@ const server = http.createServer(async (req, res) => {
             dbId = saveRes.id;
             console.log(`[DataSheet] Salvo com sucesso no banco de dados com ID: ${dbId}`);
             if (saveRes.image_url) {
-              if (bilingualDoc.pt_BR?.page1) bilingualDoc.pt_BR.page1.image_url = saveRes.image_url;
-              if (bilingualDoc.en_US?.page1) bilingualDoc.en_US.page1.image_url = saveRes.image_url;
+              if (bilingualDoc.pt_BR?.page1) {
+                bilingualDoc.pt_BR.page1.image_url = saveRes.image_url;
+                delete bilingualDoc.pt_BR.page1.image_data_url;
+              }
+              if (bilingualDoc.en_US?.page1) {
+                bilingualDoc.en_US.page1.image_url = saveRes.image_url;
+                delete bilingualDoc.en_US.page1.image_data_url;
+              }
+            }
+            if (saveRes.diagram_url) {
+              if (bilingualDoc.pt_BR?.page3) {
+                bilingualDoc.pt_BR.page3.image_url = saveRes.diagram_url;
+                delete bilingualDoc.pt_BR.page3.image_data_url;
+              }
+              if (bilingualDoc.en_US?.page3) {
+                bilingualDoc.en_US.page3.image_url = saveRes.diagram_url;
+                delete bilingualDoc.en_US.page3.image_data_url;
+              }
             }
           }
         } catch (saveErr) {

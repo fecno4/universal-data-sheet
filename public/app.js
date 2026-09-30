@@ -278,6 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isEditing) {
           document.querySelectorAll('.lang-container [data-editable]').forEach(el => el.contentEditable = 'true');
         }
+        attachImageToDoc(p3ImageDataUrl, p3ImageName, 3);
       }
     };
     reader.readAsDataURL(file);
@@ -331,11 +332,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (currentBilingualDoc.pt_BR?.page1) {
         currentBilingualDoc.pt_BR.page1.image_data_url = null;
         currentBilingualDoc.pt_BR.page1.image_name = null;
+        delete currentBilingualDoc.pt_BR.page1.image_url;
         window.DatasheetRender.render(currentBilingualDoc.pt_BR, previewPtContainer);
       }
       if (currentBilingualDoc.en_US?.page1) {
         currentBilingualDoc.en_US.page1.image_data_url = null;
         currentBilingualDoc.en_US.page1.image_name = null;
+        delete currentBilingualDoc.en_US.page1.image_url;
         window.DatasheetRender.render(currentBilingualDoc.en_US, previewEnContainer);
       }
       if (isEditing) {
@@ -363,11 +366,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (currentBilingualDoc.pt_BR?.page3) {
         currentBilingualDoc.pt_BR.page3.image_data_url = null;
         currentBilingualDoc.pt_BR.page3.image_name = null;
+        delete currentBilingualDoc.pt_BR.page3.image_url;
         window.DatasheetRender.render(currentBilingualDoc.pt_BR, previewPtContainer);
       }
       if (currentBilingualDoc.en_US?.page3) {
         currentBilingualDoc.en_US.page3.image_data_url = null;
         currentBilingualDoc.en_US.page3.image_name = null;
+        delete currentBilingualDoc.en_US.page3.image_url;
         window.DatasheetRender.render(currentBilingualDoc.en_US, previewEnContainer);
       }
       if (isEditing) {
@@ -594,6 +599,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
       openAccordionIfFilled();
 
+      // Atualiza dropzones visuais com as imagens do acervo
+      p1FileInput.value = '';
+      p1ImageDataUrl = null;
+      if (currentBilingualDoc.pt_BR?.page1?.image_url) {
+        const p1Url = currentBilingualDoc.pt_BR.page1.image_url;
+        const p1Name = currentBilingualDoc.pt_BR.page1.image_name || 'Imagem salva no acervo';
+        p1ImageName = p1Name;
+        p1ThumbImg.src = p1Url;
+        p1FileInfo.textContent = p1Name;
+        p1PreviewBox.hidden = false;
+        p1SelectBtn.textContent = '📷 Alterar';
+      } else {
+        p1ImageName = null;
+        p1ThumbImg.src = '';
+        p1PreviewBox.hidden = true;
+        p1SelectBtn.textContent = '📁 Selecionar';
+      }
+
+      p3FileInput.value = '';
+      p3ImageDataUrl = null;
+      if (currentBilingualDoc.pt_BR?.page3?.image_url) {
+        const p3Url = currentBilingualDoc.pt_BR.page3.image_url;
+        const p3Name = currentBilingualDoc.pt_BR.page3.image_name || 'Diagrama salvo no acervo';
+        p3ImageName = p3Name;
+        p3ThumbImg.src = p3Url;
+        p3FileInfo.textContent = p3Name;
+        p3PreviewBox.hidden = false;
+        p3SelectBtn.textContent = '📐 Alterar';
+      } else {
+        p3ImageName = null;
+        p3ThumbImg.src = '';
+        p3PreviewBox.hidden = true;
+        p3SelectBtn.textContent = '📁 Selecionar';
+      }
+
       // Renderiza as páginas
       window.DatasheetRender.render(currentBilingualDoc.pt_BR, previewPtContainer);
       window.DatasheetRender.render(currentBilingualDoc.en_US, previewEnContainer);
@@ -815,23 +855,34 @@ document.addEventListener('DOMContentLoaded', () => {
           scope: 'universal',
           part_number: String(partNumber),
           image_data: imageDataUrl,
-          image_name: imageName
+          image_name: imageName,
+          target_page: pageNumber
         })
       });
       if (resp.ok) {
         const data = await resp.json();
-        if (data && data.image_url) {
+        if (data && (data.image_url || data.diagram_url)) {
+          const imgUrl = (pageNumber === 3 && data.diagram_url) ? data.diagram_url : data.image_url;
           if (pageNumber === 1) {
             if (currentBilingualDoc.pt_BR?.page1) {
-              currentBilingualDoc.pt_BR.page1.image_url = data.image_url;
+              currentBilingualDoc.pt_BR.page1.image_url = imgUrl;
               delete currentBilingualDoc.pt_BR.page1.image_data_url;
             }
             if (currentBilingualDoc.en_US?.page1) {
-              currentBilingualDoc.en_US.page1.image_url = data.image_url;
+              currentBilingualDoc.en_US.page1.image_url = imgUrl;
               delete currentBilingualDoc.en_US.page1.image_data_url;
             }
+          } else if (pageNumber === 3) {
+            if (currentBilingualDoc.pt_BR?.page3) {
+              currentBilingualDoc.pt_BR.page3.image_url = imgUrl;
+              delete currentBilingualDoc.pt_BR.page3.image_data_url;
+            }
+            if (currentBilingualDoc.en_US?.page3) {
+              currentBilingualDoc.en_US.page3.image_url = imgUrl;
+              delete currentBilingualDoc.en_US.page3.image_data_url;
+            }
           }
-          console.log(`[Acervo Image] Imagem persistida com sucesso: ${data.image_url} (SHA-256: ${data.sha256})`);
+          console.log(`[Acervo Image] Imagem P${pageNumber} persistida com sucesso: ${imgUrl} (SHA-256: ${data.diagram_sha256 || data.sha256})`);
         }
       }
     } catch (e) {
@@ -904,6 +955,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentBilingualDoc.en_US?.page1) {
           currentBilingualDoc.en_US.page1.image_url = data.image_url;
           delete currentBilingualDoc.en_US.page1.image_data_url;
+        }
+      }
+      if (data.diagram_url) {
+        if (currentBilingualDoc.pt_BR?.page3) {
+          currentBilingualDoc.pt_BR.page3.image_url = data.diagram_url;
+          delete currentBilingualDoc.pt_BR.page3.image_data_url;
+        }
+        if (currentBilingualDoc.en_US?.page3) {
+          currentBilingualDoc.en_US.page3.image_url = data.diagram_url;
+          delete currentBilingualDoc.en_US.page3.image_data_url;
         }
       }
       // Atualiza catálogo local
