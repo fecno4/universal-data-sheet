@@ -1298,15 +1298,30 @@ const server = http.createServer(async (req, res) => {
       rejectUnauthorized: false,
       timeout: 15000
     }, (upstreamRes) => {
-      res.writeHead(upstreamRes.statusCode || 200, {
-        'Content-Type': upstreamRes.headers['content-type'] || 'image/png',
-        'Cache-Control': upstreamRes.headers['cache-control'] || 'public, max-age=31536000, immutable',
-        'ETag': upstreamRes.headers['etag'] || `"${sha}"`
-      });
+      const statusCode = upstreamRes.statusCode || 200;
+      if (statusCode === 200) {
+        res.writeHead(200, {
+          'Content-Type': upstreamRes.headers['content-type'] || 'image/png',
+          'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+          'ETag': upstreamRes.headers['etag'] || `"${sha}"`
+        });
+      } else {
+        res.writeHead(statusCode, {
+          'Content-Type': upstreamRes.headers['content-type'] || 'application/json',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        });
+      }
       upstreamRes.pipe(res);
     });
     clientReq.on('error', (e) => {
-      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.writeHead(502, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
       res.end(JSON.stringify({ error: `Falha ao buscar imagem: ${e.message}` }));
     });
     clientReq.end();

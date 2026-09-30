@@ -546,13 +546,53 @@ document.addEventListener('DOMContentLoaded', () => {
     const cleanUrl = (url) => {
       if (!url || typeof url !== 'string') return url;
       const m = url.match(/(?:\/api)?(?:\/v1)?\/datasheets\/images\/(?:b['"])?([a-f0-9]{64})/);
-      return m ? `/api/v1/datasheets/images/${m[1]}` : url;
+      return m ? `/api/v1/datasheets/images/${m[1]}?v=${m[1].slice(0, 12)}` : url;
     };
     if (doc.page1 && doc.page1.image_url) {
       doc.page1.image_url = cleanUrl(doc.page1.image_url);
     }
     if (doc.page3 && doc.page3.image_url) {
       doc.page3.image_url = cleanUrl(doc.page3.image_url);
+    }
+  }
+
+  function syncDropzonesFromDoc(doc) {
+    if (!doc) return;
+    const p1 = doc.pt_BR?.page1 || doc.page1;
+    const p3 = doc.pt_BR?.page3 || doc.page3;
+
+    p1FileInput.value = '';
+    p1ImageDataUrl = null;
+    if (p1?.image_url) {
+      const p1Url = p1.image_url;
+      const p1Name = p1.image_name || 'Imagem salva no acervo';
+      p1ImageName = p1Name;
+      p1ThumbImg.src = p1Url;
+      p1FileInfo.textContent = p1Name;
+      p1PreviewBox.hidden = false;
+      p1SelectBtn.textContent = '📷 Alterar';
+    } else {
+      p1ImageName = null;
+      p1ThumbImg.src = '';
+      p1PreviewBox.hidden = true;
+      p1SelectBtn.textContent = '📁 Selecionar';
+    }
+
+    p3FileInput.value = '';
+    p3ImageDataUrl = null;
+    if (p3?.image_url) {
+      const p3Url = p3.image_url;
+      const p3Name = p3.image_name || 'Diagrama salvo no acervo';
+      p3ImageName = p3Name;
+      p3ThumbImg.src = p3Url;
+      p3FileInfo.textContent = p3Name;
+      p3PreviewBox.hidden = false;
+      p3SelectBtn.textContent = '📐 Alterar';
+    } else {
+      p3ImageName = null;
+      p3ThumbImg.src = '';
+      p3PreviewBox.hidden = true;
+      p3SelectBtn.textContent = '📁 Selecionar';
     }
   }
 
@@ -600,39 +640,7 @@ document.addEventListener('DOMContentLoaded', () => {
       openAccordionIfFilled();
 
       // Atualiza dropzones visuais com as imagens do acervo
-      p1FileInput.value = '';
-      p1ImageDataUrl = null;
-      if (currentBilingualDoc.pt_BR?.page1?.image_url) {
-        const p1Url = currentBilingualDoc.pt_BR.page1.image_url;
-        const p1Name = currentBilingualDoc.pt_BR.page1.image_name || 'Imagem salva no acervo';
-        p1ImageName = p1Name;
-        p1ThumbImg.src = p1Url;
-        p1FileInfo.textContent = p1Name;
-        p1PreviewBox.hidden = false;
-        p1SelectBtn.textContent = '📷 Alterar';
-      } else {
-        p1ImageName = null;
-        p1ThumbImg.src = '';
-        p1PreviewBox.hidden = true;
-        p1SelectBtn.textContent = '📁 Selecionar';
-      }
-
-      p3FileInput.value = '';
-      p3ImageDataUrl = null;
-      if (currentBilingualDoc.pt_BR?.page3?.image_url) {
-        const p3Url = currentBilingualDoc.pt_BR.page3.image_url;
-        const p3Name = currentBilingualDoc.pt_BR.page3.image_name || 'Diagrama salvo no acervo';
-        p3ImageName = p3Name;
-        p3ThumbImg.src = p3Url;
-        p3FileInfo.textContent = p3Name;
-        p3PreviewBox.hidden = false;
-        p3SelectBtn.textContent = '📐 Alterar';
-      } else {
-        p3ImageName = null;
-        p3ThumbImg.src = '';
-        p3PreviewBox.hidden = true;
-        p3SelectBtn.textContent = '📁 Selecionar';
-      }
+      syncDropzonesFromDoc(currentBilingualDoc);
 
       // Renderiza as páginas
       window.DatasheetRender.render(currentBilingualDoc.pt_BR, previewPtContainer);
@@ -768,6 +776,8 @@ document.addEventListener('DOMContentLoaded', () => {
       sanitizeDocImageUrls(currentBilingualDoc.en_US);
       originalBilingualDoc = JSON.parse(JSON.stringify(bilingualDoc));
 
+      syncDropzonesFromDoc(currentBilingualDoc);
+
       // Renderiza as duas versões de forma independente
       window.DatasheetRender.render(currentBilingualDoc.pt_BR, previewPtContainer);
       window.DatasheetRender.render(currentBilingualDoc.en_US, previewEnContainer);
@@ -882,6 +892,11 @@ document.addEventListener('DOMContentLoaded', () => {
               delete currentBilingualDoc.en_US.page3.image_data_url;
             }
           }
+          sanitizeDocImageUrls(currentBilingualDoc.pt_BR);
+          sanitizeDocImageUrls(currentBilingualDoc.en_US);
+          syncDropzonesFromDoc(currentBilingualDoc);
+          window.DatasheetRender.render(currentBilingualDoc.pt_BR, previewPtContainer);
+          window.DatasheetRender.render(currentBilingualDoc.en_US, previewEnContainer);
           console.log(`[Acervo Image] Imagem P${pageNumber} persistida com sucesso: ${imgUrl} (SHA-256: ${data.diagram_sha256 || data.sha256})`);
         }
       }
@@ -967,6 +982,11 @@ document.addEventListener('DOMContentLoaded', () => {
           delete currentBilingualDoc.en_US.page3.image_data_url;
         }
       }
+      sanitizeDocImageUrls(currentBilingualDoc.pt_BR);
+      sanitizeDocImageUrls(currentBilingualDoc.en_US);
+      syncDropzonesFromDoc(currentBilingualDoc);
+      window.DatasheetRender.render(currentBilingualDoc.pt_BR, previewPtContainer);
+      window.DatasheetRender.render(currentBilingualDoc.en_US, previewEnContainer);
       // Atualiza catálogo local
       loadAcervoCatalog();
 
