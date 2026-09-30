@@ -118,3 +118,13 @@ test('Universal DataSheet Studio v2.0: isolamento estrito de acervo Scania e esc
   assert.match(js, /scope:\s*['"]universal['"]/, 'Deve persistir com scope universal');
 });
 
+test('Universal DataSheet Studio v2.0: proxy e sanitização de imagens de datasheets', () => {
+  const serverPath = path.join(projectRoot, 'server.mjs');
+  const serverCode = fs.readFileSync(serverPath, 'utf8');
+  assert.match(serverCode, /datasheets\/images/, 'server.mjs deve suportar rota proxy para imagens');
+
+  const jsPath = path.join(projectRoot, 'public', 'app.js');
+  const js = fs.readFileSync(jsPath, 'utf8');
+  assert.match(js, /sanitizeDocImageUrls/, 'app.js deve sanitizar URLs de imagens recuperadas do acervo');
+});
+

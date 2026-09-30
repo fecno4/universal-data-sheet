@@ -1288,7 +1288,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const imgMatch = /^\/api(?:\/v1)?\/datasheets\/images\/([a-f0-9]{64})$/.exec(pathname);
+  const imgMatch = /^(?:\/api)?(?:\/v1)?\/datasheets\/images\/(?:b['"])?([a-f0-9]{64})['"]?$/.exec(pathname);
   if (imgMatch && (req.method === 'GET' || req.method === 'HEAD')) {
     const sha = imgMatch[1];
     const remoteUrl = new URL(`/v1/datasheets/images/${sha}`, MULTI_API_URL);

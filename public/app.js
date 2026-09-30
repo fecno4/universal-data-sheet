@@ -536,6 +536,21 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAcervoCatalog();
   });
 
+  function sanitizeDocImageUrls(doc) {
+    if (!doc) return;
+    const cleanUrl = (url) => {
+      if (!url || typeof url !== 'string') return url;
+      const m = url.match(/(?:\/api)?(?:\/v1)?\/datasheets\/images\/(?:b['"])?([a-f0-9]{64})/);
+      return m ? `/api/v1/datasheets/images/${m[1]}` : url;
+    };
+    if (doc.page1 && doc.page1.image_url) {
+      doc.page1.image_url = cleanUrl(doc.page1.image_url);
+    }
+    if (doc.page3 && doc.page3.image_url) {
+      doc.page3.image_url = cleanUrl(doc.page3.image_url);
+    }
+  }
+
   // =========================================================================
   // 8. CARREGAR DATASHEET SALVO DO ACERVO
   // =========================================================================
@@ -555,6 +570,8 @@ document.addEventListener('DOMContentLoaded', () => {
         pt_BR: data.content_pt,
         en_US: data.content_en || data.content_pt
       };
+      sanitizeDocImageUrls(currentBilingualDoc.pt_BR);
+      sanitizeDocImageUrls(currentBilingualDoc.en_US);
       originalBilingualDoc = JSON.parse(JSON.stringify(currentBilingualDoc));
 
       // Preenche os campos do formulário para referência
@@ -707,6 +724,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const bilingualDoc = await resp.json();
       currentBilingualDoc = bilingualDoc;
+      sanitizeDocImageUrls(currentBilingualDoc.pt_BR);
+      sanitizeDocImageUrls(currentBilingualDoc.en_US);
       originalBilingualDoc = JSON.parse(JSON.stringify(bilingualDoc));
 
       // Renderiza as duas versões de forma independente
