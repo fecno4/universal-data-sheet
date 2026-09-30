@@ -25,15 +25,15 @@ A aplicação opera integrada ao ecossistema on-premise Proxmox VE:
 
 | Componente | Localização | Ambiente / Destino | Status | Validação |
 | :--- | :--- | :--- | :--- | :--- |
-| **Frontend Web v2.0** | `/public/` | Browser / Nginx (`10.88.30.63:80`) | **100% Concluído & Em Produção (UI v2.0 com Seletor Segmentado de Modos, Hero Input 48px, Dropzones compactas Drag & Drop HTML5, Acordeão de Enriquecimento, ListBox WAI-ARIA com live filter, Isolamento Scania com alerta)** | 30/09/2026 |
-| **Gateway Node.js** | `/server.mjs` | LXC `10.88.30.63:8098` | **Ativo / Em Produção (Node.js v24.21.0, rotas de API com scope=universal, streaming de assets estáticos e proxy para Multi-API e Ollama)** | 30/09/2026 |
+| **Frontend Web v2.0** | `/public/` | Browser / Nginx (`10.88.30.63:80`) | **100% Concluído & Em Produção (UI v2.0 com Seletor Segmentado de Modos, Hero Input 48px, Dropzones compactas Drag & Drop HTML5 com sync bidirecional, Acordeão de Enriquecimento, ListBox WAI-ARIA com live filter, botões de exclusão REST e cache-busting determinístico)** | 30/09/2026 |
+| **Gateway Node.js** | `/server.mjs` | LXC `10.88.30.63:8098` | **Ativo / Em Produção (Node.js v24.21.0, rotas de API com scope=universal, suporte a DELETE /api/datasheets/:id, streaming de assets estáticos e proxy para Multi-API e Ollama)** | 30/09/2026 |
 | **Serviço systemd** | `/systemd/universal-datasheet.service` | LXC `10.88.30.63` (`/etc/systemd/system/`) | **Ativo / Running (Reinício automático on-failure, NOFILE 65536)** | 30/09/2026 |
 | **Nginx Reverso** | `/etc/nginx/sites-available/universal-datasheet` | LXC `10.88.30.63:80` | **Ativo / Em Produção (Proxy para 127.0.0.1:8098 com timeouts de 300s para IA e max body size de 50MB)** | 30/09/2026 |
 | **Integração IA GPU** | Servidor `10.88.30.12:11434` | Rede Proxmox VE (RTX 5060 Ti 16GB) | **100% Integrado (gemma4:12b-it-qat, gpt-oss:20b, gemma4:26b)** | 30/09/2026 |
 | **Integração IA MoE** | Servidor `10.88.30.11:11434` | Rede Proxmox VE | **100% Integrado (granite4:7b-a1b-h)** | 30/09/2026 |
-| **Integração PostgreSQL** | LXC `10.88.30.60:8443` | Banco `universal_datasheets` (PostgreSQL 17) | **100% Integrado (Lookup instantâneo, persistência de fichas e imagens SHA-256 com isolamento de acervo)** | 30/09/2026 |
+| **Integração PostgreSQL** | LXC `10.88.30.60:8443` | Banco `universal_datasheets` (PostgreSQL 17) | **100% Integrado (Lookup instantâneo, persistência de fichas e imagens SHA-256 com isolamento de acervo, endpoint DELETE por ID)** | 30/09/2026 |
 | **Script de Deploy** | `/scripts/deploy.sh` | Shell Bash Automatizado | **100% Concluído (Deploy em 1-clique via rsync + systemctl + nginx reload)** | 30/09/2026 |
-| **Suíte de Testes** | `/test/datasheet-ui.test.mjs` | Node Test Runner (`node --test`) | **5/5 Testes Aprovados (100% Local e no LXC de Produção)** | 30/09/2026 |
+| **Suíte de Testes** | `/test/datasheet-ui.test.mjs` | Node Test Runner (`node --test`) | **7/7 Testes Aprovados (100% Local e no LXC de Produção)** | 30/09/2026 |
 
 ---
 
@@ -107,6 +107,17 @@ flowchart TD
   - Aplicação / Modelos
   - Sistema / Categoria
 - Badge numérico dinâmico: `X de Y DataSheet(s)`, botão `✖ Limpar Filtro` e abertura em 1 clique (`⚡ Abrir Instantâneo`).
+
+### 4.6. Governança de Integridade, Cache-Busting e Exclusão Segura via API REST
+- **Exclusão 100% via API REST:**
+  - Botão de lixeira `🗑️` em cada card do Acervo e botão `🗑️ Excluir` na barra de ações superior do documento ativo.
+  - Confirmação nativa preventiva (`window.confirm`) antes de disparar `DELETE /api/datasheets/{id}`.
+  - O gateway `server.mjs` autentica com Bearer Token e encaminha `DELETE /v1/datasheets/{id}?scope=universal` para o backend FastAPI (`10.88.30.60:8443`), que remove o registro da tabela `datasheets` e desfaz associações com integridade referencial.
+- **Prevenção de Cache Corrompido (Safari/WebKit & Chromium):**
+  - Respostas com erro ou status diferente de 200 no proxy de imagens recebem `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`.
+  - Injeção de versionamento determinístico `?v=sha256[:12]` em todas as referências de imagens recuperadas do banco (`sanitizeDocImageUrls`).
+- **Sincronização Visual de Dropzones:**
+  - Função `syncDropzonesFromDoc(doc)` unifica a hidratação visual das miniaturas e títulos das dropzones tanto no carregamento do acervo quanto na geração instantânea e salvamento manual.
 
 ---
 

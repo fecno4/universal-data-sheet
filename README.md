@@ -29,10 +29,12 @@ Aplicação independente para geração de **DataSheets Técnicos Oficiais de 3 
 - **Arquitetura UX/UI v2.0 (Design Moderno & Produtividade):**
   - **Alternador Segmentado de Modos:** Abas em pílulas (`⚡ Gerar Novo DataSheet` e `📚 Explorar Acervo de Fichas Salvas`) para foco operacional imediato.
   - **Hero Input de Part Number (48px):** Campo de alto impacto visual com busca instantânea no acervo e badge dinâmico interativo (`⚡ Já no Acervo!`).
-  - **Dropzones Compactas (~68px) com Drag & Drop Nativo:** Arraste e solte fotografias e diagramas técnicos diretamente na interface.
+  - **Dropzones Compactas (~68px) com Drag & Drop Nativo & Sincronização:** Arraste e solte fotografias e diagramas técnicos diretamente na interface, sincronizados bidirecionalmente entre o documento visual e os dropzones.
   - **Acordeão Retrátil de Enriquecimento:** Campos de pesquisa externa, observações corporativas e fontes recolhidos por padrão para máxima ergonomia.
   - **ListBox Interativa do Acervo & Filtro em Tempo Real:** Semântica WAI-ARIA (`role="listbox"`, `role="option"`) com filtro client-side instantâneo a cada tecla digitada sem recarregar a tela.
-- **Suíte de Testes Automatizada:** Cobertura de testes unitários para a interface, integridade de rotas e entrega de assets estáticos via `node --test` (4/4 testes aprovados).
+  - **Exclusão 100% via API REST:** Botões de exclusão com confirmação visual integrados na listagem do acervo (`🗑️`) e na barra de controle (`🗑️ Excluir`), comunicando via HTTP `DELETE /api/datasheets/:id` diretamente com o backend sem necessidade de SSH.
+  - **Perenidade de Imagens & Cache-Busting:** Versionamento determinístico de URLs de imagens (`?v=sha256[:12]`) e cabeçalho `no-store` em respostas com erro, eliminando persistência indevida de cache HTTP no Safari/WebKit e Chrome.
+- **Suíte de Testes Automatizada:** Cobertura de testes unitários para a interface, integridade de rotas, isolamento de escopo, sanitização de imagens e exclusão via `node --test` (7/7 testes aprovados).
 - **Modo de Edição Inline WYSIWYG:** Possibilidade de alterar qualquer campo de texto diretamente no documento visual antes da impressão em qualquer idioma.
 - **Impressão PDF Calibrada:** Compatível com Safari/WebKit (macOS), Google Chrome, Firefox e Edge, gerando estritamente 3 páginas sem páginas em branco intercaladas.
 - **Zero Dependências npm:** Desenvolvido em Node.js nativo puro (sem necessidade de `npm install`).
@@ -56,7 +58,7 @@ Acesse no navegador: **`http://localhost:8098`**
 ### Opção 3: Executar a Suíte de Testes
 ```bash
 node --test
-# 4 pass / 0 fail (100% de sucesso)
+# 7 pass / 0 fail (100% de sucesso)
 ```
 
 ---
